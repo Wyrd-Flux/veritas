@@ -1,167 +1,171 @@
 # Demo notes
 
-How each claim in this README was verified, and what to watch for when running
-it. Recorded 2026-09-30 on Windows / CPython 3.11.9.
+Recorded 2026-09-30, for reviewers who want to know which claims were executed
+rather than argued.
 
-## Verified commands
+## Environment
 
-All run from an isolated virtualenv with Veritas installed as a wheel, and all
-upstream bindings supplied by environment variable only.
-
-| Command | Result |
+| | |
 |---|---|
-| `pip install .` into a fresh venv | succeeds; `veritas-demo` console script on PATH |
-| `import veritas_demo` with nothing installed | succeeds; **zero** upstream modules in `sys.modules` |
-| `veritas-demo --version` | `0.1.0` |
-| `veritas-demo exit-codes` | prints the contract table from the code implementing it |
-| `veritas-demo doctor` | 5/5 `AVAILABLE`, exit 0 |
-| `veritas-demo find "evidence verification"` | `PARTIAL_MATCH`, 1 candidate with qualifier |
-| `veritas-demo predicates` | 24 predicates, 0 self-check failures |
-| `veritas-demo outcomes` | 3 families, disjoint |
-| `veritas-demo admit` | 6 scenarios, 4 refused / 1 loss / 1 admitted |
-| `veritas-demo provenance --demo` | chain valid, 1 record; unknown component permitted |
-| `veritas-demo selftest` | 6/6 pass, exit 0 |
-| `pytest -q` | 55 passed, 6 skipped |
+| Python | 3.11 |
+| Dependency | `wyrd-evidence-core` 0.1.0 from GitHub |
+| Private estate | **not required, and not consulted** |
 
-### Exit-code matrix, observed
+Nothing here needs a GPU, a model, or a network. Veritas is entirely local, which
+is why its acceptance test is stricter than Placement Gate's.
 
-Checked for every subcommand in both environments. This is the distinction that
-mattered most during development, so it is recorded per command rather than
-summarised.
+## Acceptance: the six-step `find` walkthrough
 
-| Command | bound | unbound |
-|---|---:|---:|
-| `doctor` | 0 | 2 |
-| `find anything` | 0 | 2 |
-| `predicates` | 0 | 2 |
-| `outcomes` | 0 | 2 |
-| `admit` | 0 | 2 |
-| `admit --scenario legitimate` | 0 | 2 |
-| `admit --scenario inflate-correlation` (**a legitimate REFUSED**) | **0** | 2 |
-| `provenance --demo` | 0 | 2 |
-| `selftest` | 0 | 2 |
-| `exit-codes` | 0 | 0 |
-| malformed invocation | 64 | 64 |
+Every step below was executed from a clean clone in a fresh virtualenv.
 
-The row that justifies the contract: `inflate-correlation` returns
-`REFUSED` — the correct, expected, *successful* answer — and exits **0**.
-`legitimate` with no validator returns `UNAVAILABLE` and exits **2**. Neither
-verdict leaks into the other.
-
-Two defects were found and fixed while establishing this:
-
-1. **An absent gate exited 0.** `admit` printed `"verdict": "UNAVAILABLE"` and
-   returned success. Fixed; pinned by `test_missing_capability_exits_nonzero`.
-2. **A blanket rule conflated the dimensions.** The first fix applied one
-   `_exit_for` to every payload, which would also have made a governed
-   `REFUSED` exit non-zero. Replaced with a per-command contract in
-   `veritas_demo/exit_codes.py`; pinned by
-   `test_bound_capability_exits_zero_even_when_domain_refuses` and the guard
-   test `test_exit_code_never_encodes_a_domain_verdict`.
-
-`argparse` also needed subclassing: it hardcodes exit 2 for a malformed
-invocation, which collided with the documented capability-unavailable code.
-
-## The interesting results
-
-### Refusals are specific, not generic
-
-Each scenario is refused with a different set of codes, and the codes are the
-upstream module's own vocabulary:
-
-```
-inflate-correlation  RELATION_TYPE_SUBSTITUTION, RELATION_STRENGTHENING,
-                     CAUSATION_FROM_CORRELATION
-escalate-identity    IDENTITY_ESCALATION
-escalate-ownership   RELATION_TYPE_SUBSTITUTION, RELATION_STRENGTHENING,
-                     OWNERSHIP_ESCALATION
-invent-predicate     UNREGISTERED_PREDICATE
-```
-
-The escalation cases report both the specific violation *and* the generic
-strength change, which is what makes them legible to someone who has not read
-the validator's source.
-
-### Admitting a weaker claim is allowed, and recorded
-
-```
-weakening-loss  ADMITTED_WITH_LOSS  ADMISSIBLE_WEAKENING
-```
-
-`CAUSES` → `ASSOCIATED_WITH` passes. That asymmetry is the point: the gate
-blocks inflation and permits deflation, because refusing honest weakening would
-teach people to stop reporting.
-
-### The disposition gate does not consult per-operation policy while `OPEN`
-
-`can_modify` returns "all operations permitted" for an `OPEN` component before
-it reaches the per-operation policy lookup, so a `PROHIBITED` reopening policy
-has no effect until the component leaves `OPEN`. This matches the upstream
-docstring. Recorded in `docs/PROVENANCE.md` because it is easy to misread.
-
-### Chain verification has a scope
-
-Editing a `history` record is detected at load:
-
-```
-tamper history.action           -> RegistryCorruptionError on load
-tamper history.established_by   -> RegistryCorruptionError on load
-tamper component.established_by -> loads; chain still reports valid
-```
-
-The third is a real limit on what "chain valid" means. Veritas reports
-`chain_valid` and `records_checked` separately rather than a single
-"unmodified" boolean, precisely so this is visible.
-
-### Unknown is not forbidden
-
-```
-gate(NEVER_REGISTERED, implementation): True
-  - Component not in registry (unknown != forbidden)
-```
-
-An unregistered component permits everything. That is the upstream rule and it
-is the opposite of a safe default, so it is worth seeing explicitly: Veritas is
-a demo of a rule, not an endorsement of it.
-
-## What a reader should be sceptical of
-
-- **`find` is only as complete as its corpus.** It searches a 61-concept index.
-  A `NO_MATCH` means "not in this index", not "does not exist". The `NO_MATCH`
-  vs `PARTIAL_MATCH` distinction is preserved rather than flattened.
-- **The predicate vocabulary is domain-specific.** `CAUSES` means what that
-  estate means by it. Veritas renders the lattice and does not argue the
-  vocabulary is universal.
-- **`provenance --demo` shows a one-component registry.** It demonstrates the
-  gate and the chain, not the scale. The real corpus has 76 components and five
-  absolute evidence paths that resolve only on its original machine.
-- **The upstream licenses are unresolved.** See `LICENSE`.
-
-## Reproducing the environment
-
-The bindings used for verification, in Git-Bash form:
+**1 — install from a clean clone**
 
 ```console
-$ export VERITAS_REGISTRY_PATH=C:/Projects
-$ export VERITAS_PREDICATE_SEMANTICS_PATH=C:/G1/tools
-$ export VERITAS_WRITEBACK_VALIDATOR_PATH=C:/G1/tools
-$ export VERITAS_OUTCOME_TAXONOMY_PATH=C:/G1/tools
-$ export VERITAS_CAPABILITY_INVENTORY_PATH=C:/G1/tools
+$ git clone https://github.com/Wyrd-Flux/veritas
+$ cd veritas
+$ python -m venv .venv
+$ .venv/bin/pip install .
 ```
 
-Two directories is the whole dependency footprint. `state_registry` is a package
-directory; the other four are loose modules in one directory.
+Resolved `wyrd-evidence-core` from GitHub. No `VERITAS_*` variable was set, and no
+`C:\G1` or `C:\Projects` path existed on `sys.path`.
 
-Note the asymmetry in the bindings: `VERITAS_REGISTRY_PATH` is `C:/Projects`, the
-parent of the `state_registry` package directory, while the other four point at
-`C:/G1/tools`, which contains the loose modules directly. Passing the package
-directory itself does not resolve `state_registry`.
+**2 — `find` against the bundled synthetic registry**
 
-`writeback_validator` imports `predicate_semantics` as a sibling, so the two
-must be resolved from the same place. Veritas handles this: once
-`writeback_validator` resolves from a directory, that directory is on
-`sys.path` for the import it performs.
+```console
+$ veritas-demo --text find "evidence verification audit"
+verdict   : PARTIAL_MATCH
+candidates (lexical leads, not recommendations):
+  EXAMPLE_EVIDENCE_VERIFICATION  [implemented]  score=1.0  terms=audit,evidence,verification
+exit=0
+```
 
-`state_registry` needs no installation — pointing `VERITAS_REGISTRY_PATH` at the
-directory containing the package directory is sufficient. It has no
-`pyproject.toml`.
+**3 — candidate leads received, with the caveat attached**
+
+The output carries the source registry, the matched terms, and the sentence that
+ranking is not a recommendation.
+
+**4 — point `find` at a user-created registry**
+
+```console
+$ veritas-demo --text find "metrics pipeline ingest aggregate" --registry ./mycap.json
+verdict   : PARTIAL_MATCH
+candidates (lexical leads, not recommendations):
+  TEAM_METRICS_PIPELINE  [implemented]  score=1.0  terms=aggregate,ingest,metrics,pipeline
+exit=0
+```
+
+The bundled example was **not** searched alongside it. Precedence is replacement,
+not merging.
+
+**5 — results come from that registry**
+
+`registries: mycap.json`. The lead id came from the user's file, not from Veritas.
+
+**6 — remove the registry**
+
+```console
+$ mv mycap.json mycap.json.bak
+$ veritas-demo --text find "metrics pipeline ingest aggregate" --registry ./mycap.json
+verdict: REGISTRY_UNAVAILABLE
+detail : registry 'mycap.json': cannot read .../mycap.json: No such file or directory
+
+no fallback registry was searched. Point --registry at a readable
+capability registry, or unset it to use the bundled example.
+$ echo $?
+2
+```
+
+Non-zero, and **nothing was searched**. It did not fall back to the example. A
+typo in a path cannot masquerade as a capability gap.
+
+**7 — no private concept graph in the wheel or repo**
+
+```console
+$ grep -c . veritas_demo/example_capability_registry.json   # the only registry shipped
+1
+```
+
+Every id in it begins `EXAMPLE_`, the document carries `"synthetic": true`, and
+`_note` states in the file itself that none of it describes real software.
+`test_no_private_concept_graph_is_present_anywhere` enforces this.
+
+## Exit-code separation, verified
+
+```console
+$ veritas-demo admit --scenario inflate-correlation >/dev/null; echo $?
+0                                  # REFUSED, and that is a correct answer
+$ veritas-demo find "anything" --registry ./nope.json >/dev/null; echo $?
+2                                  # could not ask the question
+$ veritas-demo --nonsense >/dev/null 2>&1; echo $?
+64                                 # a typo
+```
+
+`NO_MATCH` also exits 0, because a completed search that finds nothing is a
+completed search. Only a failure to answer moves the exit code.
+
+## The six admission scenarios
+
+All ship with the demo and are asserted by `selftest`:
+
+| Scenario | Expected | What it tests |
+|---|---|---|
+| `inflate-correlation` | `REFUSED` | causation cannot be claimed from a correlational predicate |
+| `escalate-identity` | `REFUSED` | a path reference cannot establish identity |
+| `escalate-ownership` | `REFUSED` | a path reference cannot establish ownership |
+| `invent-predicate` | `REFUSED` | an unregistered predicate is refused, not defaulted |
+| `weakening-loss` | `ADMITTED_WITH_LOSS` | losing a claim is admissible, and is recorded |
+| `legitimate` | `ADMITTED` | the control: a supported relation is admitted |
+
+```console
+$ veritas-demo selftest
+  [PASS] inflate-correlation  REFUSED  [...]
+  [PASS] escalate-identity     REFUSED  [...]
+  ...
+  selftest passed
+$ echo $?
+0
+```
+
+## Provenance verified
+
+```console
+$ veritas-demo --text provenance --demo
+registered ROUTER
+  gate(OPEN, implementation): True - Component ROUTER is OPEN: all operations permitted
+  chain valid: True  records: 1
+  gate(NEVER_REGISTERED, implementation): True - Component not in registry (unknown != forbidden)
+```
+
+Chain tampering is detected in the test suite, so `chain valid: True` is a claim
+with teeth rather than a formality.
+
+## What was **not** verified
+
+- **No URL registry, no entry-point registry, no G1 adapter.** The provider
+  protocol exists so they can be added; none is implemented or claimed.
+- **Matching is lexical.** No synonyms, no embeddings, no semantic search. An
+  earlier internal version said the same thing and it is still the limit.
+- **Single-user, single-process.** Nothing here is tested under concurrent
+  registry writers.
+- **No claim about your estate.** `find` says what it searched. If your registry
+  is incomplete, so is the answer, and the output says so.
+
+## Reproducing
+
+```console
+$ git clone https://github.com/Wyrd-Flux/veritas
+$ cd veritas
+$ python -m venv .venv
+$ .venv/bin/pip install .
+$ .venv/bin/python -m pytest -q
+$ .venv/bin/veritas-demo doctor
+$ .venv/bin/veritas-demo selftest
+$ .venv/bin/veritas-demo find "evidence verification audit"
+```
+
+Expected:
+
+```
+76 passed
+```

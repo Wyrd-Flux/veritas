@@ -60,33 +60,35 @@ CONTRACTS: dict[str, ExitContract] = {
     "doctor": ExitContract(
         command="doctor",
         required_capability=None,
-        success="every declared capability resolved",
-        failure="one or more capabilities unresolved",
-        notes="reports all five; the exit code summarizes the load report",
+        success="the evidence capabilities resolved and every configured registry is readable",
+        failure="a capability is unresolved, or a configured registry is unreadable",
+        notes="also reports which registries 'find' would search",
     ),
     "find": ExitContract(
         command="find",
-        required_capability="capability_inventory",
-        success="the query executed against the available inventory",
-        failure="the inventory is unavailable",
+        required_capability="capability_registry",
+        success="the query executed against the configured registries",
+        failure="a configured registry could not be read (REGISTRY_UNAVAILABLE)",
         notes=(
             "NO_MATCH, PARTIAL_MATCH and MULTIPLE_CANDIDATES are domain verdicts "
-            "and exit 0. They describe the index searched, not the world; NO_MATCH "
-            "is not evidence of absence and must not be flattened into it"
+            "and exit 0. They describe the registries searched, not the world; "
+            "NO_MATCH is not evidence of absence and must not be flattened into "
+            "it. An unreadable registry is a failure to answer and exits "
+            "non-zero -- it never falls back to another registry"
         ),
     ),
     "predicates": ExitContract(
         command="predicates",
         required_capability="predicate_semantics",
         success="the lattice loaded and rendered",
-        failure="the provider is unavailable",
+        failure="wyrd-evidence-core is not installed",
         notes="a predicate's strength class is data, not an exit condition",
     ),
     "outcomes": ExitContract(
         command="outcomes",
         required_capability="outcome_taxonomy",
         success="the taxonomy loaded and rendered",
-        failure="the provider is unavailable",
+        failure="wyrd-evidence-core is not installed",
         notes="REFUSED_* classes are part of the vocabulary, not failures",
     ),
     "admit": ExitContract(
@@ -106,7 +108,7 @@ CONTRACTS: dict[str, ExitContract] = {
         command="provenance",
         required_capability="registry",
         success="the requested check executed",
-        failure="the registry capability is unavailable",
+        failure="wyrd-evidence-core is not installed",
         notes=(
             "a policy refusal -- gate permitted=false, or a component in a "
             "terminal disposition -- is a successful evaluation and exits 0"
@@ -116,7 +118,7 @@ CONTRACTS: dict[str, ExitContract] = {
         command="selftest",
         required_capability="writeback_validator",
         success="every expected behavioral assertion held",
-        failure="an assertion failed, or the validator is unavailable",
+        failure="an assertion failed, or wyrd-evidence-core is not installed",
         notes=(
             "the one command whose domain result IS its exit condition: it "
             "asserts expected behavior rather than reporting it"

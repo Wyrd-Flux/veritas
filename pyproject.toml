@@ -4,25 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "veritas-demo"
-version = "0.1.0"
-description = "Capability discovery and governed claim admission over an existing evidence-graph estate."
+version = "0.2.0"
+description = "Governed claim admission: can this claim be admitted, under what evidence, and what may be concluded from it."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Veritas contributors" }]
-keywords = ["provenance", "evidence", "capability-discovery", "governance"]
+keywords = ["provenance", "evidence", "governance", "predicates", "capability-discovery"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3.11",
   "Topic :: Software Development :: Quality Assurance",
 ]
 
-# Veritas has no runtime dependencies. The capabilities it binds to
-# (state_registry, predicate_semantics, writeback_validator, outcome_taxonomy,
-# capability_inventory) are NOT published on PyPI as of 2026-09-30; they are
-# loaded from source trees or site-packages at runtime. See README.md
-# "Binding to upstream capabilities" and veritas_demo/veritas.providers.json.
-dependencies = []
+# The evidence primitives are an ordinary dependency now. GitHub-only
+# distribution in this phase, so the requirement is a direct reference rather
+# than a PyPI name -- pip resolves it from the git repository.
+dependencies = [
+  "wyrd-evidence-core @ git+https://github.com/Wyrd-Flux/wyrd-evidence-core.git",
+]
 
 [project.scripts]
 veritas-demo = "veritas_demo.cli:main"
@@ -30,12 +30,13 @@ veritas-demo = "veritas_demo.cli:main"
 [project.urls]
 Homepage = "https://github.com/Wyrd-Flux/veritas"
 Source = "https://github.com/Wyrd-Flux/veritas"
+EvidenceCore = "https://github.com/Wyrd-Flux/wyrd-evidence-core"
 
 [tool.setuptools.packages.find]
 include = ["veritas_demo*"]
 
 [tool.setuptools.package-data]
-veritas_demo = ["veritas.providers.json"]
+veritas_demo = ["example_capability_registry.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

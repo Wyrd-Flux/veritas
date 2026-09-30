@@ -1,11 +1,15 @@
-"""Veritas session: capability discovery + governed edge admission + provenance.
+"""Veritas session: capability discovery + governed relation admission + provenance.
 
-Veritas exposes four capabilities, each delegated to an upstream implementation:
+Veritas exposes four capabilities:
 
-``capability``   intent -> candidate subsystems with evidence status
-``predicate``    the registered predicate strength lattice
-``admit``        before/after edge set -> accept / refuse / admissible-loss verdict
-``provenance``   component state transitions -> hash-chained, policy-gated record
+``find``        a need -> qualified candidate leads from a caller-supplied registry
+``predicates``  the registered predicate strength lattice
+``admit``       before/after relation set -> accept / refuse / admissible-loss verdict
+``provenance``  component state transitions -> hash-chained, policy-gated record
+
+The first three delegate to ``wyrd-evidence-core``, an ordinary installed
+dependency. The fourth is Veritas' own: capability discovery, which needs a
+provider model the evidence core has no business knowing about.
 
 Every refusal reason is the upstream module's own. Veritas adds no opinions.
 """
@@ -17,11 +21,31 @@ import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
-from .providers import CapabilityUnavailable, ProviderSet, resolve_providers
+from wyrd_evidence_core import outcome_taxonomy
+from wyrd_evidence_core import predicate_semantics as _predicates
+from wyrd_evidence_core import registry as _registry
+from wyrd_evidence_core import registry_schema as _schema
+from wyrd_evidence_core import writeback_validator as _writeback
 
-VERITAS_VERSION = "0.1.0"
+from .capabilities import (
+    CapabilityRegistryProvider,
+    LocalJsonRegistryProvider,
+    load_registries,
+    search,
+)
+
+VERITAS_VERSION = "0.2.0"
+
+#: Capabilities supplied by wyrd-evidence-core. Resolved at import time from an
+#: installed dependency, so there is nothing here that can fail to load.
+EVIDENCE_CORE_CAPABILITIES = (
+    "predicate_semantics",
+    "writeback_validator",
+    "outcome_taxonomy",
+    "registry",
+)
 
 
 class CapabilityStatus(str, Enum):
@@ -74,66 +98,64 @@ class LoadReport:
         }
 
     def render(self) -> str:
-        lines = ["Veritas capability load"]
+        lines = ["Veritas evidence capabilities"]
         for name, status in sorted(self.statuses.items()):
             res = self.resolutions.get(name, {})
             mark = "ok  " if status is CapabilityStatus.AVAILABLE else "MISS"
             lines.append(f"  [{mark}] {name:22s} {status.value}")
             if res.get("detail"):
-                lines.append(f"         source={res.get('source')} {res['detail']}")
+                lines.append(f"         {res['detail']}")
         lines.append(f"  complete: {self.complete}")
         return "\n".join(lines)
 
 
 class VeritasSession:
-    """A bound set of upstream capabilities plus the operations built on them."""
+    """The evidence primitives plus Veritas' own capability-discovery operations."""
 
-    def __init__(self, providers: ProviderSet | None = None) -> None:
-        self._providers = providers if providers is not None else resolve_providers()
+    def __init__(
+        self,
+        providers: Sequence[CapabilityRegistryProvider] | None = None,
+    ) -> None:
+        self._providers = list(providers) if providers is not None else []
         self.load = LoadReport(
             statuses={
-                name: (
-                    CapabilityStatus.AVAILABLE
-                    if self._providers.is_available(name)
-                    else CapabilityStatus.UNAVAILABLE
-                )
-                for name in self._providers.resolutions
+                name: CapabilityStatus.AVAILABLE
+                for name in EVIDENCE_CORE_CAPABILITIES
             },
             resolutions={
-                name: res.as_dict() for name, res in self._providers.resolutions.items()
+                name: {"detail": f"wyrd-evidence-core  ({name})"}
+                for name in EVIDENCE_CORE_CAPABILITIES
             },
         )
 
-    # -- capability -------------------------------------------------------- #
+    # -- capability discovery ---------------------------------------------- #
+
+    @property
+    def providers(self) -> list[CapabilityRegistryProvider]:
+        return list(self._providers)
+
+    def use_registry(self, path: str | Path) -> None:
+        """Point ``find`` at a caller-supplied registry, replacing the default."""
+        self._providers = [LocalJsonRegistryProvider(Path(path))]
 
     def find_capability(self, request: str) -> dict[str, Any]:
-        """Ask the estate's own inventory which subsystems could do ``request``.
+        """Search the configured registries for candidate leads.
 
-        Returns the upstream verdict verbatim. Veritas does not re-rank or
-        re-scope the candidates; that judgement belongs to the caller.
+        A lead is a lexical near-match, not a capability identity and not a
+        recommendation. An unreadable registry raises rather than returning an
+        answer, so a mistyped path cannot look like a genuine gap.
         """
-        module = self._providers.module("capability_inventory")
-        if module is None:
-            return {
-                "query": request,
-                "verdict": CapabilityStatus.UNAVAILABLE.value,
-                "capability": CapabilityStatus.UNAVAILABLE.value,
-                "candidates": [],
-                "detail": self.load.resolutions.get("capability_inventory", {}).get(
-                    "detail", ""
-                ),
-            }
-        result = dict(module.query(request))
-        result["capability"] = self.load.status("capability_inventory").value
+        if not self._providers:
+            self._providers = load_registries()
+        result = search(request, self._providers)
+        result["capability"] = CapabilityStatus.AVAILABLE.value
         return result
 
     # -- predicate lattice ------------------------------------------------- #
 
     def predicate_lattice(self) -> dict[str, Any]:
         """The registered predicates with their strength class and powers."""
-        module = self._providers.module("predicate_semantics")
-        if module is None:
-            return {"capability": CapabilityStatus.UNAVAILABLE.value}
+        module = _predicates
         rows = []
         for name, predicate in sorted(module.PREDICATES.items()):
             rows.append(
@@ -151,18 +173,18 @@ class VeritasSession:
                 }
             )
         return {
-            "capability": CapabilityStatus.AVAILABLE.value,
+            "capability": self.load.status("predicate_semantics").value,
             "predicate_count": len(rows),
             "self_check_failures": len(module.self_check() or []),
+            "strength_classes": dict(module.STRENGTH_NAME),
             "predicates": rows,
         }
 
     # -- edge admission ---------------------------------------------------- #
 
     def parse_edges(self, rows: Sequence[dict[str, Any]]) -> tuple[Any, ...]:
-        """Build upstream ``Edge`` objects from plain dicts."""
-        module = self._providers.require("writeback_validator")
-        return tuple(module.Edge(**row) for row in rows)
+        """Build ``Edge`` objects from plain dicts."""
+        return tuple(_writeback.Edge(**row) for row in rows)
 
     def admit_edges(
         self,
@@ -176,12 +198,7 @@ class VeritasSession:
         ``Edge`` dataclass: ``subject``, ``predicate``, ``obj``, and optionally
         ``basis``, ``evidence``, ``subject_time``, ``object_time``.
         """
-        module = self._providers.module("writeback_validator")
-        if module is None:
-            return {
-                "verdict": EdgeVerdict.UNAVAILABLE.value,
-                "capability": CapabilityStatus.UNAVAILABLE.value,
-            }
+        module = _writeback
         prior = list(self.parse_edges(before))
         incoming = list(self.parse_edges(proposed))
         verdict = module.validate(
@@ -197,7 +214,7 @@ class VeritasSession:
                     else EdgeVerdict.ADMITTED.value
                 )
             ),
-            "capability": CapabilityStatus.AVAILABLE.value,
+            "capability": self.load.status("writeback_validator").value,
             "accepted": [str(e) for e in verdict.accepted],
             "refused": [
                 {"edge": f.edge, "code": f.code, "detail": f.detail}
@@ -213,11 +230,9 @@ class VeritasSession:
     # -- outcome taxonomy -------------------------------------------------- #
 
     def outcome_classes(self) -> dict[str, Any]:
-        module = self._providers.module("outcome_taxonomy")
-        if module is None:
-            return {"capability": CapabilityStatus.UNAVAILABLE.value}
+        module = outcome_taxonomy
         return {
-            "capability": CapabilityStatus.AVAILABLE.value,
+            "capability": self.load.status("outcome_taxonomy").value,
             "classes": [getattr(c, "value", str(c)) for c in module.ALL_CLASSES],
             "resolved": [getattr(c, "value", str(c)) for c in module.RESOLVED_CLASSES],
             "refused": [getattr(c, "value", str(c)) for c in module.REFUSED_CLASSES],
@@ -226,27 +241,22 @@ class VeritasSession:
         }
 
     def classify_outcome(self, counts: dict[str, int]) -> dict[str, Any]:
-        module = self._providers.module("outcome_taxonomy")
-        if module is None:
-            return {"capability": CapabilityStatus.UNAVAILABLE.value}
+        module = outcome_taxonomy
         return {
-            "capability": CapabilityStatus.AVAILABLE.value,
+            "capability": self.load.status("outcome_taxonomy").value,
             "counts": dict(counts),
             "render": module.render(module.summarise(counts)),
         }
 
     # -- provenance -------------------------------------------------------- #
 
-    def _registry_module(self) -> Any:
-        return self._providers.module("registry")
-
     def open_registry(self, data_dir: str | Path | None = None) -> Any:
-        """Open an upstream ``StateRegistry``.
+        """Open a ``StateRegistry``.
 
         ``data_dir`` defaults to a fresh temporary directory so a demo run never
         writes into an existing registry corpus.
         """
-        module = self._providers.require("registry")
+        module = _registry
         target = Path(data_dir) if data_dir is not None else Path(
             tempfile.mkdtemp(prefix="veritas_registry_")
         )
@@ -266,8 +276,8 @@ class VeritasSession:
         reopening_level: str = "REQUIRES_AUTHORIZATION",
         reopening_reason: str = "reopening requires explicit authorization",
     ) -> Any:
-        """Register a component using upstream schema types only."""
-        schema = self._import_schema()
+        """Register a component using the evidence core's schema types."""
+        schema = _schema
         component = schema.ComponentState(
             name=name,
             repository=repository,
@@ -307,7 +317,7 @@ class VeritasSession:
         component: str,
         operation: str,
     ) -> dict[str, Any]:
-        """Ask the upstream registry whether an operation is permitted."""
+        """Ask the registry whether an operation is permitted."""
         result = registry.can_modify(component, operation)
         return {
             "component": component,
@@ -326,14 +336,6 @@ class VeritasSession:
             "first_invalid_record": verification.first_invalid_record,
             "error": verification.error,
         }
-
-    def _import_schema(self) -> Any:
-        try:
-            import importlib
-
-            return importlib.import_module("state_registry.schema")
-        except ImportError as exc:  # pragma: no cover - environment dependent
-            raise CapabilityUnavailable("registry", str(exc)) from exc
 
 
 def _jsonable(value: Any) -> Any:

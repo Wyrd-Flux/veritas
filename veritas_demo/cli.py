@@ -1,7 +1,7 @@
 """Command-line entry point for Veritas.
 
     veritas-demo doctor
-    veritas-demo find "evidence verification"
+    veritas-demo find "evidence verification" --registry ./my-registry.json
     veritas-demo predicates
     veritas-demo outcomes
     veritas-demo admit --scenario SCENARIO
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Any, Sequence
 
 from . import VERITAS_VERSION
@@ -28,7 +29,11 @@ from .exit_codes import (
     render_contracts,
     unavailable,
 )
-from .providers import CapabilityUnavailable
+from .capabilities import (
+    ENV_REGISTRY,
+    LocalJsonRegistryProvider,
+    RegistryUnavailable,
+)
 
 SCENARIOS: dict[str, dict[str, Any]] = {
     "inflate-correlation": {
@@ -161,45 +166,120 @@ def _available(session: VeritasSession, capability: str) -> bool:
 
 
 def _cmd_doctor(session: VeritasSession, args: argparse.Namespace) -> int:
-    """Report which capabilities resolved. Exit code summarizes the load report."""
+    """Report the evidence capabilities and which registries ``find`` will search."""
     report = session.load
     payload = report.as_dict()
+
+    providers = session.providers
+    try:
+        if not providers:
+            from .capabilities import load_registries
+
+            providers = load_registries()
+        registry_rows = []
+        for provider in providers:
+            row = {"name": provider.name, "readable": True, "capabilities": None}
+            try:
+                row["capabilities"] = len(provider.load())
+            except RegistryUnavailable as exc:
+                row["readable"] = False
+                row["detail"] = str(exc)
+            registry_rows.append(row)
+    except RegistryUnavailable as exc:  # pragma: no cover - defensive
+        registry_rows = [{"name": "(unresolved)", "readable": False, "detail": str(exc)}]
+
+    payload["registries"] = registry_rows
     payload["evaluated"] = True
-    payload["exit_code"] = EXIT_OK if report.complete else EXIT_CAPABILITY_UNAVAILABLE
-    _emit(payload, args.text, report.render())
+    all_readable = all(r.get("readable") for r in registry_rows)
+    payload["exit_code"] = (
+        EXIT_OK if (report.complete and all_readable) else EXIT_CAPABILITY_UNAVAILABLE
+    )
+
+    lines = [report.render(), "", "capability registries for 'find'"]
+    for row in registry_rows:
+        mark = "ok  " if row.get("readable") else "MISS"
+        detail = (
+            f"{row.get('capabilities')} capabilities"
+            if row.get("readable")
+            else row.get("detail", "unreadable")
+        )
+        lines.append(f"  [{mark}] {row.get('name'):34s} {detail}")
+    lines.append("")
+    lines.append(
+        "point 'find' at your own registry with --registry PATH, or set "
+        "VERITAS_CAPABILITY_REGISTRY"
+    )
+    _emit(payload, args.text, "\n".join(lines))
     return int(payload["exit_code"])
 
 
 def _cmd_find(session: VeritasSession, args: argparse.Namespace) -> int:
-    result = session.find_capability(args.query)
+    """Search the configured capability registries for candidate leads.
+
+    Exit codes are separated from the verdict: a query that runs and returns
+    NO_MATCH is a completed query, so it exits 0. A registry that cannot be read
+    is a failure to answer, and exits non-zero.
+    """
+    try:
+        result = session.find_capability(args.query)
+    except RegistryUnavailable as exc:
+        payload = {
+            "query": args.query,
+            "verdict": "REGISTRY_UNAVAILABLE",
+            "evaluated": False,
+            "candidates": [],
+            "detail": str(exc),
+            "note": (
+                "the configured registry could not be read, so no search was "
+                "performed. This is deliberately not reported as NO_MATCH: an "
+                "unreadable registry is a failure to answer, and treating it as "
+                "an answer would make a mistyped path look like a capability gap."
+            ),
+            "exit_code": EXIT_CAPABILITY_UNAVAILABLE,
+        }
+        _emit(
+            payload,
+            args.text,
+            "\n".join([
+                f"query: {args.query}",
+                "verdict: REGISTRY_UNAVAILABLE",
+                f"detail: {exc}",
+                "",
+                "no fallback registry was searched. Point --registry at a readable",
+                "capability registry, or unset it to use the bundled example.",
+            ]),
+        )
+        return EXIT_CAPABILITY_UNAVAILABLE
+
+    result["evaluated"] = True
     lines = [
-        f"query: {result.get('query')}",
-        f"verdict: {result.get('verdict')}",
+        f"query     : {result.get('query')}",
+        f"verdict   : {result.get('verdict')}",
+        f"registries: {', '.join(result.get('registries_searched') or []) or '(none)'}",
+        f"qualifier : {result.get('qualifier', '')}",
         "",
-        "candidates:",
+        "candidates (lexical leads, not recommendations):",
     ]
+    if not result.get("candidates"):
+        lines.append("  (none)")
     for cand in result.get("candidates", []) or []:
         lines.append(
-            f"  {cand.get('concept_id')}"
-            f"  [{cand.get('implemented_status')}]"
-            f"  score={cand.get('score')}"
-            f"  qualifier={cand.get('qualifier')}"
+            f"  {cand.get('candidate_id')}"
+            f"  [{cand.get('status')}]"
+            f"  score={cand.get('lexical_score')}"
+            f"  terms={','.join(cand.get('matched_terms') or [])}"
         )
-        for root in cand.get("implementation_roots", []) or []:
-            lines.append(f"      root: {root}")
-        if cand.get("tests"):
-            lines.append(f"      tests: {cand['tests']}")
-    result["evaluated"] = _available(session, "capability_inventory")
-    if not result["evaluated"]:
-        result["note"] = (
-            "the inventory is unavailable, so this is not a claim about the "
-            "estate; NO_MATCH from a present inventory likewise describes only "
-            "the index searched"
-        )
-    if result.get("next_action"):
-        lines.extend(["", f"next: {result['next_action']}"])
+        if cand.get("callable") is False:
+            lines.append("      callable: NO -- registered but not implemented")
+        if cand.get("source"):
+            lines.append(f"      source: {cand['source']}")
+        if cand.get("evidence_notes"):
+            lines.append(f"      evidence: {cand['evidence_notes']}")
+        if cand.get("verification"):
+            lines.append(f"      verified by: {', '.join(cand['verification'])}")
+    lines.extend(["", f"note: {result.get('note', '')}"])
     _emit(result, args.text, "\n".join(lines))
-    return from_payload(result, "capability_inventory")
+    return EXIT_OK
 
 
 def _cmd_predicates(session: VeritasSession, args: argparse.Namespace) -> int:
@@ -275,18 +355,13 @@ def _cmd_admit(session: VeritasSession, args: argparse.Namespace) -> int:
 
 
 def _cmd_provenance(session: VeritasSession, args: argparse.Namespace) -> int:
-    try:
-        registry = session.open_registry(None if args.demo else args.data_dir)
-    except CapabilityUnavailable as exc:
-        payload = unavailable("registry", exc.detail)
-        payload["registered"] = args.component
-        _emit(payload, args.text, f"registry capability UNAVAILABLE: {exc.detail}")
-        return EXIT_CAPABILITY_UNAVAILABLE
+    """Register a component, gate an operation, and verify the history chain."""
+    registry = session.open_registry(None if args.demo else args.data_dir)
     session.register_component(
         registry,
         name=args.component,
-        repository="Ollama_Controller",
-        path="src/ollama_controller/orchestration/routing.py",
+        repository=args.repository,
+        path=args.path,
         established_date=args.date,
     )
     gate_open = session.policy_gate(registry, args.component, "implementation")
@@ -295,7 +370,7 @@ def _cmd_provenance(session: VeritasSession, args: argparse.Namespace) -> int:
     payload = {
         "registered": args.component,
         "capability": session.load.status("registry").value,
-        "evaluated": True,
+        "evaluated": _available(session, "registry"),
         "gate_while_open": gate_open,
         "chain": verification,
         "unknown_component": unknown,
@@ -394,9 +469,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="veritas-demo",
         description=(
-            "Veritas: capability discovery and governed claim admission over the "
-            "existing state_registry, predicate_semantics, writeback_validator, "
-            "outcome_taxonomy and capability_inventory implementations."
+            "Veritas: governed claim admission and capability discovery. Evidence "
+            "semantics, writeback validation, the outcome taxonomy and the "
+            "component registry come from wyrd-evidence-core. Capability discovery "
+            "searches registries you supply."
         ),
     )
     parser.add_argument("--version", action="version", version=VERITAS_VERSION)
@@ -405,12 +481,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True, parser_class=_Parser)
 
-    sub.add_parser("doctor", help="report which upstream capabilities resolved").set_defaults(
-        func=_cmd_doctor
-    )
+    sub.add_parser(
+        "doctor",
+        help="report the evidence capabilities and the configured registries",
+    ).set_defaults(func=_cmd_doctor)
 
-    find = sub.add_parser("find", help="discover existing capability for a need")
+    find = sub.add_parser(
+        "find",
+        help="search capability registries for candidate leads",
+        description=(
+            "Search capability registries for candidate leads. A lead is a "
+            "lexical near-match, not a capability identity and not a "
+            "recommendation. NO_MATCH means no query term appeared in the "
+            "registries searched, not that the capability does not exist."
+        ),
+    )
     find.add_argument("query")
+    find.add_argument(
+        "--registry",
+        default=None,
+        metavar="PATH",
+        help=(
+            "capability registry JSON to search (default: "
+            f"{ENV_REGISTRY}, else the bundled synthetic example)"
+        ),
+    )
     find.set_defaults(func=_cmd_find)
 
     sub.add_parser("predicates", help="show the registered predicate lattice").set_defaults(
@@ -437,6 +532,10 @@ def build_parser() -> argparse.ArgumentParser:
     prov = sub.add_parser("provenance", help="demonstrate the policy gate and hash chain")
     prov.add_argument("--component", default="ROUTER")
     prov.add_argument("--date", default="2026-09-30")
+    prov.add_argument("--repository", default="your-project",
+                      help="repository name recorded with the component")
+    prov.add_argument("--path", default="src/your_project/router.py",
+                      help="path recorded with the component")
     prov.add_argument("--data-dir", default=None)
     prov.add_argument(
         "--demo",
@@ -460,7 +559,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "exit-codes":
         print(render_contracts())
         return EXIT_OK
-    session = VeritasSession()
+    session = VeritasSession(
+        providers=(
+            [LocalJsonRegistryProvider(Path(args.registry))]
+            if getattr(args, "registry", None)
+            else None
+        )
+    )
     return int(args.func(session, args))
 
 

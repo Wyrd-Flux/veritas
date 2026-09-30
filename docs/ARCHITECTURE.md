@@ -1,153 +1,156 @@
 # Architecture
 
-Veritas is a thin application over five capabilities that already exist in
-three different source trees. This document records exactly what it depends on
-and where the boundaries fall.
+Veritas is a small application over four evidence primitives from one installed
+package, plus a capability-discovery layer it owns. This document records where
+each boundary falls and why.
 
 ## The composition
 
 ```
-                        ┌──────────────────────────────────────┐
-                        │            veritas_demo.cli          │
-                        │  doctor · find · predicates ·        │
-                        │  outcomes · admit · provenance ·     │
-                        │  selftest                            │
-                        └───────────────┬──────────────────────┘
-                                        │
-                        ┌───────────────▼──────────────────────┐
-                        │           veritas_demo.core          │
-                        │  VeritasSession                      │
-                        │  CapabilityStatus / EdgeVerdict      │
-                        │  find_capability · predicate_lattice │
-                        │  admit_edges · outcome_classes       │
-                        │  open_registry · policy_gate         │
-                        │  verify_provenance                   │
-                        └───────────────┬──────────────────────┘
-                                        │  ProviderSet.require(capability)
-                        ┌───────────────▼──────────────────────┐
-                        │      veritas_demo.providers          │
-                        │  resolution order + explicit report  │
-                        │  1. VERITAS_<NAME>_PATH              │
-                        │  2. importable module on sys.path    │
-                        │  3. search_paths (empty when shipped)│
-                        └───────────────┬──────────────────────┘
-                                        │
-        ┌───────────────────────────────┼───────────────────────────────┐
-        │                               │                               │
-┌───────▼─────────┐          ┌──────────▼─────────┐         ┌──────────▼─────────┐
-│  C:/Projects    │          │     C:/G1/tools    │         │     C:/G1/tools    │
-│                 │          │                     │         │                     │
-│ state_registry  │          │ predicate_semantics │         │ writeback_         │
-│                 │          │                     │         │   validator        │
-│ · schema.py     │          │ 24 predicates       │         │                     │
-│ · registry.py   │          │ 6 strength classes  │         │ 13 refusal codes   │
-│ · contradiction │          │ oriented / temporal │         │ before→after gate  │
-│   .py           │          │   policies          │         │                    │
-└─────────────────┘          └─────────────────────┘         └────────────────────┘
-                                       │                               │
-                        ┌──────────────▼─────────┐         ┌──────────▼─────────┐
-                        │     C:/G1/tools       │         │    C:/G1/tools     │
-                        │ outcome_taxonomy      │         │ capability_        │
-                        │ 10 classes in 3 fams  │         │   inventory        │
-                        └───────────────────────┘         └────────────────────┘
+                    ┌──────────────────────────────────────────┐
+                    │           veritas_demo.cli               │
+                    │  doctor · find · predicates · outcomes ·  │
+                    │  admit · provenance · selftest            │
+                    └──────┬──────────────────────────┬────────┘
+                           │                          │
+        ┌──────────────────▼───────────┐   ┌──────────▼─────────────────┐
+        │      veritas_demo.core       │   │  veritas_demo.capabilities│
+        │  VeritasSession              │   │  CapabilityRegistryProvider│
+        │  builds inputs, unpacks      │   │  LocalJsonRegistryProvider │
+        │  upstream results            │   │  search() over N providers │
+        │  NO policy of its own        │   │  bundled synthetic example │
+        └──────────────┬───────────────┘   └────────────────────────────┘
+                       │ import
+        ┌──────────────▼───────────────────────────────────────────────┐
+        │            wyrd-evidence-core  (Apache-2.0)                   │
+        │                                                                │
+        │  predicate_semantics   the strength lattice, 24 predicates    │
+        │  writeback_validator   relation-set admission                 │
+        │  outcome_taxonomy      10 classes in 4 families               │
+        │  registry              component state, policy, hash chain    │
+        └────────────────────────────────────────────────────────────────┘
 ```
 
-Two source trees, five independently-built capabilities, one application.
+## What is delegated, and to where
 
-## The five capabilities in detail
+| Veritas operation | Delegates to | Decides |
+|---|---|---|
+| `predicates` | `predicate_semantics` | predicate strength, directionality, powers |
+| `admit` | `writeback_validator` | accept / refuse / admissible-loss, with reason codes |
+| `outcomes` | `outcome_taxonomy` | which family an outcome class belongs to |
+| `provenance` | `registry` | state transitions, the policy gate, chain validity |
+| `find` | **nothing** — it is Veritas' own | lexical candidate leads |
 
-### `registry` — `state_registry`
+The first four return upstream's own answers. Veritas builds the inputs and
+renders the outputs, and changes neither.
 
-Owns: component disposition, per-operation policy, hash-chained history.
+## The one thing Veritas owns
 
-| Upstream surface | Used for |
+`capabilities.py` exists because the internal capability inventory it replaced
+was coupled to a private corpus, and the useful part of it — *"a lexical match is
+a candidate lead"* — has nothing to do with evidence semantics. Putting it in
+`wyrd-evidence-core` would have made the evidence library carry capability-search
+vocabulary it has no use for.
+
+It is ~450 lines and depends on nothing but the standard library, which is the
+condition for it being obviously separable later if a second consumer appears.
+
+### The provider seam
+
+```python
+class CapabilityRegistryProvider(Protocol):
+    name: str
+    def load(self) -> list[CapabilityRecord]: ...
+```
+
+`find` takes a *list* of providers, not a registry path. v1 ships one
+implementation — `LocalJsonRegistryProvider`, a JSON file — but the search and
+output code never names it. A URL registry, a package entry point, or a
+private-estate adapter is a new class, not a rewrite.
+
+Two rules govern registry selection, and both exist because the failure they
+prevent is silent:
+
+1. **Precedence is not merging.** Supplying `--registry` or
+   `VERITAS_CAPABILITY_REGISTRY` replaces the bundled example; it does not add to
+   it. A caller who points at their own registry means it, and silently mixing in
+   demo data would corrupt the answer.
+2. **An unreadable registry raises.** It does not fall back. A mistyped path must
+   not be able to look like a genuine capability gap — which is why
+   `REGISTRY_UNAVAILABLE` exits non-zero while `NO_MATCH` exits zero.
+
+## Three failure modes this package is built to avoid
+
+**Local substitution of a governed rule.** Veritas must never answer with its own
+approximation of an evidence decision. Concretely: `core.py` contains no
+`except ImportError`, no `if module is None`, and no `hasattr(module, ...)`. A
+missing dependency stops the program at import, loudly. Enforced by
+`test_no_local_substitution_of_a_governed_rule`.
+
+**Silent regression to a source-tree binding.** A contributor could reintroduce a
+private-module import without noticing. `test_veritas_names_no_private_estate_module`
+scans every source file for any reference to a private module name, whether by
+import or by attribute access.
+
+**Absence read as prohibition.** Three places enforce the opposite convention,
+because each was a real defect:
+
+| Behaviour | Why |
 |---|---|
-| `state_registry.registry.StateRegistry` | open / persist a registry |
-| `.register(ComponentState)` | declare a component |
-| `.transition(name, Disposition, ...)` | move it through a disposition |
-| `.can_modify(name, op)` | the policy gate; returns `(permitted, reason, required_authority)` |
-| `.verify_history(name)` | verify the `prev_hash`/`hash` chain |
-| `.verify_provenance(name)` | resolve declared evidence references |
-| `state_registry.schema.*` | `ComponentState`, `State`, `Policy`, `OperationPolicy`, `OperationLevel`, `Authority`, `Disposition`, `ResearchState` |
-
-Veritas additionally binds (not yet exposed as a subcommand):
-
-- `state_registry.contradiction` — parses prose claims out of a document and
-  diffs them against recorded state, reporting `info` / `conflict` severity.
-  This is the natural companion to `provenance` and the most likely next
-  subcommand.
-- `state_registry.ci_check.run_ci_check()` / `state_registry.precommit.run_preflight()`
-  — the same gate as a CI step and as a pre-commit hook.
-
-### `predicate_semantics` — the strength lattice
-
-Owns: 24 predicates, 6 strength classes (`CORRELATIONAL` → `AUTHORITY`),
-directionality, temporal policy, and which predicates may establish identity,
-ownership, or causation.
-
-Veritas renders it; it adds no predicates.
-
-Two invariants the demo leans on, both asserted in `tests/test_veritas.py`:
-
-- exactly `OWNED_BY_CONCEPT` and `OWNED_BY_OPERATOR` grant ownership
-- exactly `CAUSES`, `MOTIVATES` and `RESOLVES` imply causation
-
-### `writeback_validator` — the admission gate
-
-Owns: comparing a proposed relation set against the current one. Returns
-accepted, refused (13 named codes), and admissible losses.
-
-Veritas translates the result into one of three verdicts plus the upstream
-reason codes:
-
-| Upstream result | Veritas verdict |
-|---|---|
-| nothing refused, nothing lost | `ADMITTED` |
-| nothing refused, losses present | `ADMITTED_WITH_LOSS` |
-| one or more refused | `REFUSED` |
-
-### `outcome_taxonomy` — how attempts end
-
-Owns: 10 classes in 3 families (`RESOLVED`, `REFUSED`, `OPEN`) plus
-`summarise()` / `render()`.
-
-### `capability_inventory` — the discovery surface
-
-Owns: mapping a stated need to registered systems, with an evidence qualifier
-per candidate (`CALLABLE`, `NOT_CALLABLE`, …) and a next-action string.
-
-Veritas passes the verdict through. It does not re-rank candidates — deciding
-which one to read is the caller's judgement, and pretending otherwise would
-reintroduce exactly the drift this capability exists to prevent.
-
-## Why these five and not others
-
-The estate contains substantially larger subsystems — a 1,621-test inference
-controller with resource-aware placement, an FMM fast-multipole solver, a
-constraint-guided life simulation, an adaptive vector compressor. Veritas was
-built from the five smallest ones because:
-
-1. **They run with no GPU, no model server, and no network.** The demo is
-   reproducible on a laptop, which the larger systems are not.
-2. **Their decisions are pure.** Same input, same verdict, byte-identical hash.
-   That makes the refusals reproducible in a test rather than anecdotal.
-3. **They compose into one question.** Discovery → claim → admission →
-   classification is a single thread. The larger subsystems each answer a
-   different question and would not have cohereed.
-4. **Their refusals are named.** A refusal code is checkable. "The system said
-   no" is not.
+| `unknown != forbidden` in the registry | a missing registration must not look like a policy decision |
+| `NO_MATCH` means "not in the registries searched" | a registry may be incomplete |
+| an unreadable registry is not `NO_MATCH` | a failure to answer is not an answer |
 
 ## Layering rules this codebase follows
 
-- **No decision logic lives in Veritas.** `core.py` builds upstream inputs and
-  unpacks upstream results. Every verdict and every refusal code originates
-  upstream.
-- **No silent substitution.** A missing capability produces `UNAVAILABLE` and a
-  non-zero exit, never a local approximation. Four tests pin this.
-- **No upstream import at module scope.** All five are resolved lazily through
-  `ProviderSet`, so `import veritas_demo` works with nothing installed.
-- **No machine-specific paths in version control.** The shipped
-  `veritas.providers.json` has an empty `search_paths`. Bindings come from the
-  environment.
-- **No writes outside the caller.** `open_registry()` with no argument uses a
-  fresh temporary directory. The demo never writes into an upstream corpus.
+- **No governed policy in Veritas.** No predicate strength, no refusal code, no
+  admissibility rule. Those belong to `wyrd-evidence-core` and are not duplicated.
+- **No source-tree binding.** No `sys.path` manipulation, no environment
+  variables for capability loading, no provider-resolution layer. The dependency
+  graph is what `pyproject.toml` declares, and a test holds the source to it.
+- **No private corpus.** The only registry shipped is synthetic, labelled, and
+  uses `EXAMPLE_`-prefixed ids.
+- **Ranking is never a recommendation.** `find` carries the caveat in its data,
+  not only in its help text.
+- **Exit codes separate execution from verdict.** A refusal exits 0; a failure to
+  answer does not.
+
+## Registry format
+
+Small on purpose, and extensible:
+
+```json
+{
+  "registry": "my-team",
+  "version": "1",
+  "capabilities": [
+    {
+      "id": "TEAM_METRICS_PIPELINE",
+      "name": "metrics pipeline",
+      "description": "...",
+      "terms": ["metrics", "pipeline"],
+      "aliases": ["telemetry"],
+      "status": "implemented",
+      "source": "https://github.com/my-org/metrics",
+      "callable": true,
+      "evidence_notes": "covered by integration tests",
+      "verification": ["tests/test_ingest.py"],
+      "anything_else_you_like": {"kept": "in record.extra"}
+    }
+  ]
+}
+```
+
+Only `id` is required. Unknown fields are preserved rather than rejected, so the
+schema can grow without a version negotiation.
+
+### Matching
+
+Terms are matched as **whole words**, never as substrings. A single incidental hit
+is treated as noise: a candidate is only reported once at least
+`MIN_SIGNIFICANT_TERMS` distinct query terms match, and the default of 2 is a
+floor rather than a scoring nicety.
+
+That floor exists because an earlier version scored a nonsense query at 0.10
+against unrelated prose, which made `NO_MATCH` unreachable. A surface whose
+refusal cannot be reached is broken, whatever its precision.

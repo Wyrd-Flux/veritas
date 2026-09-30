@@ -1,161 +1,117 @@
 # Source provenance
 
-Veritas was assembled from an existing estate. This records exactly what came
-from where, and — more importantly — what did **not** come from anywhere.
+Recorded 2026-09-30. This file records the migration as well as the original
+provenance, because both matter to anyone reading the history.
 
-Recorded 2026-09-30.
+## What Veritas depends on now
 
-## Upstream sources
+```
+veritas
+  └─ wyrd-evidence-core   (Apache-2.0, public, installed from GitHub)
+       └─ Python standard library
+```
 
-These are **source trees** — where the implementations live. They are not the
-values to supply to `VERITAS_<NAME>_PATH`, which take the directory to place on
-`sys.path`. For `registry` that is `C:/Projects`, the parent of
-`C:/Projects/state_registry`; see the README bindings table.
+That is the complete dependency graph. There is no source-tree binding, no
+environment variable, and no private corpus.
 
-| Capability | Source tree | Files used | Written by |
-|---|---|---|---|
-| `registry` | `C:/Projects/state_registry` | `registry.py`, `schema.py` | the estate's state-registry workstream |
-| `predicate_semantics` | `C:/G1/tools` | `predicate_semantics.py` | the estate's evidence-governance workstream |
-| `writeback_validator` | `C:/G1/tools` | `writeback_validator.py` | same workstream |
-| `outcome_taxonomy` | `C:/G1/tools` | `outcome_taxonomy.py` | same workstream |
-| `capability_inventory` | `C:/G1/tools` | `capability_inventory.py` | same workstream |
+`wyrd-evidence-core` was extracted from internal trees for this migration. Its
+own [`PROVENANCE.md`](https://github.com/Wyrd-Flux/wyrd-evidence-core/blob/main/docs/PROVENANCE.md)
+records the exact source paths and SHA-256 hashes. Veritas copies none of it.
 
-Git metadata for both trees is externalised to `C:/LocalGitDirs/`, so a
-`.git` file in either root points at a gitdir rather than containing history.
-
-## What was copied: nothing
-
-Veritas contains **zero lines** of upstream code. It contains:
+## What Veritas contains
 
 | File | Role |
 |---|---|
-| `veritas_demo/providers/__init__.py` | capability resolution, import, reporting |
-| `veritas_demo/core.py` | `VeritasSession`; builds upstream inputs, unpacks upstream results |
 | `veritas_demo/cli.py` | argument parsing, output rendering, scenario definitions |
+| `veritas_demo/core.py` | `VeritasSession`; builds inputs, unpacks upstream results |
+| `veritas_demo/capabilities.py` | **new** — the public capability-registry provider model |
+| `veritas_demo/example_capability_registry.json` | **new** — synthetic demo registry |
+| `veritas_demo/exit_codes.py` | the documented exit-code contract |
 | `veritas_demo/__main__.py` | module entry point |
-| `veritas_demo/__init__.py` | public re-exports |
-| `veritas_demo/veritas.providers.json` | empty search-path list + documentation |
-| `tests/test_veritas.py` | 38 conformance tests |
-| `pyproject.toml`, `README.md`, `docs/*`, `LICENSE` | packaging and documentation |
+| `tests/test_veritas.py` | tests |
 
-The scenario definitions in `cli.py` are *test fixtures describing claims*, not
-code lifted from anywhere. Each is a subject/predicate/object triple plus its
-evidence ref.
+Zero lines of `wyrd-evidence-core` are copied here. The only thing Veritas adds is
+capability discovery, which had to be written rather than extracted — see below.
 
-## What was deliberately not done
+## The migration (2026-09-30, this release)
 
-**No vendoring.** Upstream modules are imported at runtime. If
-`state_registry` is absent, `veritas-demo doctor` reports `UNAVAILABLE` and
-exits non-zero. It does not carry a fallback copy.
+**Before.** Veritas bound to four internal modules by path, at runtime, using
+`VERITAS_<NAME>_PATH`, and to a fifth that read a private 61-concept graph:
 
-**No reimplementation.** There is no local edge validator, no local predicate
-table, no local hash-chain implementation. Every verdict printed by this
-application was produced by the upstream module that owns that decision.
+| Old binding | Source tree |
+|---|---|
+| `registry` | `C:/Projects/state_registry` |
+| `predicate_semantics` | `C:/G1/tools` |
+| `writeback_validator` | `C:/G1/tools` |
+| `outcome_taxonomy` | `C:/G1/tools` |
+| `capability_inventory` | `C:/G1/tools` + `C:/G1/concepts` |
 
-**No patching upstream at the call site.** Veritas constructs upstream types
-directly (`ComponentState`, `OperationPolicy`, `Edge`) rather than
-duck-typing. This means a breaking upstream change surfaces immediately as a
-`TypeError` or `AttributeError` rather than as silently wrong behaviour — the
-failure mode the upstream code is written to avoid.
+That design kept the redistributable surface at zero and therefore made the demo
+**unrunnable for anyone without the private estate**. The demo's purpose is to be
+run by people who do not have it, so the constraint was wrong.
 
-## Two adaptations, and why
+**After.** Four capabilities are an ordinary dependency on
+[`wyrd-evidence-core`](https://github.com/Wyrd-Flux/wyrd-evidence-core). The fifth
+was replaced.
 
-Both are documented in the code where they occur.
+### Why `capability_inventory` was replaced, not published
 
-### 1. `Policy.new_experiment` and `Policy.reopening` are `OperationPolicy`
+It is structurally coupled to the private concept graph: `_load_concepts()` reads
+61 JSON records from `C:\G1\concepts` with the path hardcoded at module level.
+Shipping it would have meant shipping the graph, and shipping a 296 KiB private
+corpus to preserve one command was the wrong trade.
 
-Upstream `schema.Policy` accepts `OperationLevel` for these fields at
-construction but calls `.level.value` when serialising, so a bare
-`OperationLevel` raises `AttributeError` on `register()`. Veritas's
-`register_component` wraps them:
+The public design goal it was serving is real, though: *find out whether a
+capability already exists.* So the surface was kept and the coupling removed:
 
-```python
-new_experiment=schema.OperationPolicy(level=schema.OperationLevel.ALLOWED),
-reopening=schema.OperationPolicy(
-    level=schema.OperationLevel(reopening_level), reason=reopening_reason
-),
-```
+| Internal | Public |
+|---|---|
+| hardcoded `C:\G1\concepts` | `--registry PATH`, `VERITAS_CAPABILITY_REGISTRY`, or a bundled synthetic example |
+| `_load_concepts()` reading private JSON | `CapabilityRegistryProvider` protocol; v1 ships `LocalJsonRegistryProvider` |
+| a fixed concept-record ontology | a small documented schema with unknown fields preserved |
+| no way to say where a record came from | every result carries `source_registry` and `candidate_id` |
 
-This is an upstream constructor/serialiser mismatch. Veritas works around it at
-the call site instead of patching upstream, so the workaround is visible and
-removable. **Worth reporting upstream.**
+What was preserved is the lesson rather than the code: **a lexical match is a
+candidate lead, not capability identity and not a recommendation**, and `NO_MATCH`
+means "not in the registries searched", not "does not exist". The whole-word
+matching rule and the `MIN_SIGNIFICANT_TERMS` floor came across unchanged, because
+an earlier substring-matching version made `NO_MATCH` unreachable — and an
+unreachable refusal is the one failure this surface exists to prevent.
 
-### 2. `transition()` takes `Disposition` members, not strings
+The internal `capability_inventory.py` and the 61-concept graph remain internal,
+unmodified and unpublished. A G1 adapter can be written later against the public
+registry interface without G1 ever becoming a Veritas dependency.
 
-Veritas passes `schema.Disposition.PRESERVE` rather than `"PRESERVE"`. Cosmetic,
-but recorded because passing a string is the obvious first thing to try and it
-fails.
+## Provenance facts carried forward
 
-## Upstream behaviour Veritas deliberately does not claim
+**`NO_VCS_HISTORY_AT_SOURCE`** applies to the three modules from `C:\G1\tools`
+(`predicate_semantics`, `writeback_validator`, `outcome_taxonomy`). That directory
+is not under version control. No history was fabricated, in either the extraction
+or this migration.
 
-Two findings from verifying the upstream engines. Neither is a Veritas bug; both
-are limits on what this demo can honestly assert, and both are stated in the
-README.
+Operator attestation for those three modules is recorded in
+`wyrd-evidence-core/docs/PROVENANCE.md`.
 
-**Chain scope.** `verify_history` covers each component's `history` records.
-Editing a component field that sits outside that list — `established_by`, for
-example — does not invalidate the chain, and loading succeeds. Veritas does not
-present "chain valid" as "component unaltered."
+## Third-party material
 
-**`new_experiment` is not consulted by the disposition gate.** For an `OPEN`
-component every operation is permitted regardless of the per-operation policy,
-because the disposition-level branch returns before reaching it. This is
-documented in the upstream `can_modify` docstring and appears to be intended. It
-is recorded here because a reader could reasonably expect `PROHIBITED` to win
-against `OPEN`.
+None. `veritas_demo` imports only the standard library and `wyrd_evidence_core`.
+No vendored directories, no embedded third-party code, no upstream headers.
 
-## Licensing status
+## Licensing
 
-Full analysis in [`LICENSING.md`](LICENSING.md). Summary:
+- **Veritas:** MIT. See [`LICENSE`](../LICENSE).
+- **wyrd-evidence-core:** Apache-2.0, by operator decision.
 
-Veritas' own code is MIT. **No upstream source is redistributed.** Verified:
+No license file was added to, or modified in, any internal source repository as
+part of either the extraction or this migration. The internal trees remain
+unlicensed; the grant covers the extracted public work only.
 
-```console
-$ grep -rnE "class (Edge|Predicate|StateRegistry|ComponentState|Disposition|Verdict|OperationPolicy)\b" veritas_demo/
-$ # no matches
-```
+## What is deliberately absent
 
-`state_registry` has 17 commits under a single identity (`UrukuTelal`), remote
-`github.com/UrukuTelal/state_registry`, and **no LICENSE has ever existed in
-any commit**. `C:\G1` is not a git repository at all, and the four modules
-Veritas binds from it are unversioned, unlicensed, and unattributed.
-
-All five are **stdlib-only** (`outcome_taxonomy` has zero imports of any kind;
-`writeback_validator` adds one operator-authored sibling). No vendored subtree,
-no copyleft dependency, no lifted standards text. So no third-party terms flow
-through and there is no transitive license surface.
-
-Consequences, stated plainly:
-
-- Veritas imports these modules at runtime and **redistributes none of them**.
-  Publishing Veritas does not publish them, and needs no grant from anyone.
-- Anyone running the demo uses their own copy of the upstream trees.
-- The four `C:\G1` modules have **no VCS provenance at all**. Root 1 does.
-- The `C:\G1` concept corpus is **not bundled**, so `find` degrades to a
-  reported `NO_MATCH` when it is absent.
-
-**Distribution shape: ADAPTER-ONLY (operator decision, 2026-09-30).** Veritas
-reproduces none of the five upstream modules and none of the G1 concept corpus.
-**Self-contained bundling is prohibited** until upstream licensing is explicitly
-settled. Veritas grants no rights in upstream code, and no license was added to
-any upstream project as part of this decision.
-
-**Still open:** absent a license, these modules are all-rights-reserved by
-default. Veritas has no durable right to depend on them — it simply copies
-nothing out. Full analysis in [`LICENSING.md`](LICENSING.md).
-
-## Verifying these claims
-
-```console
-$ veritas-demo doctor
-```
-
-`doctor` prints, for each capability, the module name and the resolution source
-it came from. That is the receipt for the whole of this document.
-
-To confirm no upstream code was copied:
-
-```console
-$ grep -rE "class (Edge|Predicate|StateRegistry|ComponentState)\b" veritas_demo/
-$ # no matches
-```
+| Not shipped | Why |
+|---|---|
+| the 61-concept G1 graph | private estate data |
+| `capability_inventory.py` | structurally requires the graph |
+| any `C:\G1` or `C:\Projects` path | must not travel with the code |
+| unrelated G1 tooling | nothing here depends on it |
+| `state_registry/contradiction.py`, `ci_check.py`, `precommit.py` | repository-internal tooling, not the registry surface |

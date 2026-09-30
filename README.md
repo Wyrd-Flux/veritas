@@ -1,354 +1,297 @@
 # Veritas
 
-**Find the capability that already exists. Then make the claim only if it survives.**
+**Most systems that talk about evidence never define what evidence *is*. Veritas
+does — as a lattice, not as a comment — and then refuses the claims that lattice
+does not support.**
 
-Veritas is a small command-line application assembled almost entirely from
-capabilities that already exist in a larger evidence-governed estate. It binds
-to them through adapters and delegates every decision to them. It contains no
-reimplementation of any governed behaviour.
-
-It answers two questions that come up constantly when working inside such an
-estate:
-
-1. *Before I build this, does something already do it?*
-2. *Can this claim actually be admitted, or is it a dressed-up guess?*
+This is a governed claim-admission demo. You propose a set of relations; Veritas
+tells you which ones may be written, which are refused, and *why*. Every refusal
+is decided by a typed evidence registry and reported with its own reason string.
+Veritas adds no opinions and carries no fallback.
 
 ```console
-$ veritas-demo find "evidence verification"
-query: evidence verification
-verdict: PARTIAL_MATCH
-
-candidates:
-  JEV_JUST_EVIDENCE_VERIFICATION  [IMPLEMENTED]  score=0.8  qualifier=CALLABLE
-      root: <implementation root>
-      tests: <test paths>
-
-next: CANDIDATE FOUND. Read the implementation root and check the callable
-      surface before building anything new.
-```
-
-```console
-$ veritas-demo admit
+$ veritas-demo --text admit --scenario inflate-correlation
 [             REFUSED] inflate-correlation  Promote an observed association to a causal claim.
      refused: RELATION_TYPE_SUBSTITUTION on ROUTER --CAUSES--> latency_p99
      refused: RELATION_STRENGTHENING on ROUTER --CAUSES--> latency_p99
      refused: CAUSATION_FROM_CORRELATION on ROUTER --CAUSES--> latency_p99
-[  ADMITTED_WITH_LOSS] weakening-loss  Downgrade a causal claim to an association.
-     loss:    ADMISSIBLE_WEAKENING on ROUTER --ASSOCIATED_WITH--> latency_p99
-[            ADMITTED] legitimate  A claim that holds up under every gate.
+$ echo $?
+0
 ```
 
----
-
-## Why this demo exists
-
-The estate Veritas draws from is unusual: it refuses to let a statement become
-true just because someone wrote it down. Three rules run through all of it.
-
-- **A claim carries evidence.** `writeback_validator` compares a proposed
-  relation set against the current one and refuses changes that inflate what
-  the evidence supports.
-- **A relation has a strength, and the strength only moves with evidence.**
-  `predicate_semantics` holds a closed lattice of 24 predicates across six
-  strength classes. `CORRELATES_WITH` cannot become `CAUSES` because a document
-  used both words.
-- **Absence of evidence is not evidence of prohibition, and not of
-  permission either.** `state_registry` gates operations by recorded policy,
-  and says plainly which authority a blocked operation would need.
-
-Veritas makes those three rules visible in about five minutes of reading. It is
-a demo *of the architecture*, not a reimplementation of it: every verdict it
-prints came from the upstream module that owns that decision, with its own
-refusal code attached.
+**That exit code is the point.** The command ran, and the answer is "no". A
+governed refusal is a successful evaluation — see [Exit codes](#exit-codes).
 
 ---
 
-## What it composes
+## Contents
 
-Veritas is a **cross-repository composition**. None of these five capabilities
-lives with the others, and they were built independently. Veritas binds to them
-at runtime and **reproduces none of their code** — see
-[`docs/PROVENANCE.md`](docs/PROVENANCE.md):
-
-| Capability | Upstream module | Source tree | What it decides |
-|---|---|---|---|
-| `registry` | `state_registry` | `C:/Projects/state_registry` | component state, operation policy, hash-chained provenance |
-| `predicate_semantics` | `predicate_semantics` | `C:/G1/tools` | the predicate strength lattice |
-| `writeback_validator` | `writeback_validator` | `C:/G1/tools` | whether a proposed relation set is admitted |
-| `outcome_taxonomy` | `outcome_taxonomy` | `C:/G1/tools` | how an attempt is classified when it ends |
-| `capability_inventory` | `capability_inventory` | `C:/G1/tools` | which registered systems could do a stated need |
-
-**The source tree is not the binding value.** The *Source tree* column records
-where each implementation lives — it is provenance, not configuration. Veritas
-binds through `VERITAS_<NAME>_PATH`, which takes the directory to place on
-`sys.path`. So `registry` binds with `C:/Projects`, the directory *containing*
-the `state_registry` package, **not** `C:/Projects/state_registry`; supplying the
-package directory itself does not resolve. Exact values are in
-[Bind to the upstream capabilities](#bind-to-the-upstream-capabilities).
-
-The repository boundaries in the source estate are implementation locations,
-not product boundaries. Veritas treats them that way. See
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the exact dependency map and
-[`docs/PROVENANCE.md`](docs/PROVENANCE.md) for what was copied and what was
-not.
-
-**Nothing in this repository is a fork of an upstream capability.** The only
-files are the adapter layer, the CLI, the scenario definitions, the tests, and
-the documentation. See `docs/PROVENANCE.md`.
+- [Install](#install)
+- [Run](#run)
+- [What it composes](#what-it-composes)
+- [The evidence lattice](#the-evidence-lattice)
+- [Governed relation admission](#governed-relation-admission)
+- [Provenance you can verify](#provenance-you-can-verify)
+- [find: capability discovery](#find-capability-discovery)
+- [Exit codes](#exit-codes)
+- [Tests](#tests)
+- [License](#license)
 
 ---
 
 ## Install
 
 ```console
+$ git clone https://github.com/Wyrd-Flux/veritas
+$ cd veritas
 $ python -m venv .venv
-$ .venv/Scripts/python -m pip install -e .          # Windows
-$ .venv/bin/python -m pip install -e .               # POSIX
+$ .venv/bin/pip install .
+$ .venv/bin/veritas-demo selftest
 ```
 
-Veritas itself has **no runtime dependencies**.
+That is the whole setup. No environment variables, no source-tree bindings, no
+access to anything private. The evidence primitives are an ordinary dependency:
 
-## Bind to the upstream capabilities
-
-The five upstream modules are **not published on PyPI**. Point Veritas at them
-with environment variables, each accepting either a `.py` file or a directory
-to place on `sys.path`.
-
-Each variable takes the **containing** directory, not the module's own
-directory. `registry` is the case that trips people up, because it is a package
-in its own right:
-
-| Variable | Points at | Example value |
-|---|---|---|
-| `VERITAS_REGISTRY_PATH` | directory **containing** the `state_registry` package | `C:/Projects` |
-| `VERITAS_PREDICATE_SEMANTICS_PATH` | directory containing `predicate_semantics.py` | `C:/G1/tools` |
-| `VERITAS_WRITEBACK_VALIDATOR_PATH` | directory containing `writeback_validator.py` | `C:/G1/tools` |
-| `VERITAS_OUTCOME_TAXONOMY_PATH` | directory containing `outcome_taxonomy.py` | `C:/G1/tools` |
-| `VERITAS_CAPABILITY_INVENTORY_PATH` | directory containing `capability_inventory.py` | `C:/G1/tools` |
-
-For `registry`, `C:/Projects/state_registry` — the source tree recorded in
-[What it composes](#what-it-composes) — does **not** resolve, because placing a
-package directory on `sys.path` makes the package's *contents* importable, not
-the package itself. Supply its parent:
-
-```console
-$ export VERITAS_REGISTRY_PATH=C:/Projects/state_registry
-$ veritas-demo doctor
-  [MISS] registry               UNAVAILABLE
-         ModuleNotFoundError: No module named 'state_registry'
-
-$ export VERITAS_REGISTRY_PATH=C:/Projects
-$ veritas-demo doctor
-  [ok  ] registry               AVAILABLE
+```
+veritas → wyrd-evidence-core → Python stdlib
 ```
 
-The complete binding for the verification environment:
+Python 3.11 or newer. Nothing else.
 
-```console
-$ export VERITAS_REGISTRY_PATH=C:/Projects
-$ export VERITAS_PREDICATE_SEMANTICS_PATH=C:/G1/tools
-$ export VERITAS_WRITEBACK_VALIDATOR_PATH=C:/G1/tools
-$ export VERITAS_OUTCOME_TAXONOMY_PATH=C:/G1/tools
-$ export VERITAS_CAPABILITY_INVENTORY_PATH=C:/G1/tools
-
-$ veritas-demo doctor
-Veritas capability load
-  [ok  ] capability_inventory   AVAILABLE
-  [ok  ] outcome_taxonomy       AVAILABLE
-  [ok  ] predicate_semantics    AVAILABLE
-  [ok  ] registry               AVAILABLE
-  [ok  ] writeback_validator    AVAILABLE
-  complete: True
-```
-
-Resolution order is explicit and always reported: environment variable, then an
-already-importable module, then the (empty by default) `search_paths` list in
-`veritas_demo/veritas.providers.json`.
-
-**If a capability is missing, Veritas says so and refuses to guess.** It never
-substitutes a built-in approximation, and it never exits 0 while unable to
-answer:
-
-```console
-$ veritas-demo doctor          # with no bindings configured
-  [MISS] registry               UNAVAILABLE
-         source=unresolved sys.path: ModuleNotFoundError: No module named 'state_registry'
-  complete: False
-$ echo $?
-2
-
-$ veritas-demo admit --scenario legitimate
-{
-  "capability": "UNAVAILABLE",
-  "description": "A claim that holds up under every gate.",
-  "evaluated": false,
-  "exit_code": 2,
-  "scenario": "legitimate",
-  "verdict": "UNAVAILABLE"
-}
-$ echo $?
-2
-```
-
-Note that the `legitimate` scenario does **not** come back `ADMITTED` when the
-validator is missing. An absent gate is not a passing gate.
-
-## Exit codes
-
-Two things are reported separately, because conflating them is a defect in
-either direction:
-
-- **Command execution status** — did Veritas perform the requested evaluation?
-  This is the process exit code.
-- **Domain verdict** — what did the upstream capability decide? This is data in
-  the output and never moves the exit code.
-
-So a governed `REFUSED` is a *successful evaluation* and exits 0. Only an
-unavailable capability, a malformed invocation, or a failed assertion is
-non-zero.
-
-| Code | Meaning |
-|---:|---|
-| 0 | the requested evaluation completed |
-| 2 | a required upstream capability was unavailable |
-| 3 | an expected behavioral assertion did not hold (`selftest` only) |
-| 64 | the invocation was malformed |
-
-| Command | Required capability | exit 0 when | exit != 0 when |
-|---|---|---|---|
-| `doctor` | — | every declared capability resolved | one or more unresolved |
-| `find` | `capability_inventory` | the query executed | inventory unavailable |
-| `predicates` | `predicate_semantics` | lattice loaded and rendered | provider unavailable |
-| `outcomes` | `outcome_taxonomy` | taxonomy loaded and rendered | provider unavailable |
-| `admit` | `writeback_validator` | the scenario was evaluated, **including a legitimate `REFUSED`** | validator unavailable |
-| `provenance` | `registry` | the requested check executed, **even if the policy refuses** | registry unavailable |
-| `selftest` | `writeback_validator` | every expected assertion held | an assertion failed, or validator unavailable |
-
-`find` is worth a note: `NO_MATCH`, `PARTIAL_MATCH` and `MULTIPLE_CANDIDATES`
-are domain verdicts that exit 0. `NO_MATCH` describes the index that was
-searched, not the world — the upstream wording says so, and Veritas preserves
-it rather than flattening it into absence.
-
-Run `veritas-demo exit-codes` to print this table from the code that implements it.
+---
 
 ## Run
 
 ```console
-$ veritas-demo doctor                       # what resolved, and how
-$ veritas-demo find "resource-aware placement"
-$ veritas-demo predicates                   # the 24-predicate strength lattice
-$ veritas-demo outcomes                     # how attempts are classified
-$ veritas-demo admit                        # all six admission scenarios
-$ veritas-demo admit --scenario invent-predicate
-$ veritas-demo provenance --demo            # policy gate + hash chain
-$ veritas-demo selftest                     # each scenario refuses for the right reason
+$ veritas-demo doctor          # what is available, and which registries find uses
+$ veritas-demo predicates      # the evidence strength lattice
+$ veritas-demo outcomes        # how an attempt is classified when it ends
+$ veritas-demo admit --scenario inflate-correlation
+$ veritas-demo provenance --demo
+$ veritas-demo find "evidence verification"
+$ veritas-demo selftest
+$ veritas-demo exit-codes
 ```
 
-Every command takes `--text` for human-readable output and emits JSON by
-default, so the same CLI works in a terminal and in a script.
-
-```console
-$ veritas-demo admit --scenario escalate-identity --text
-[             REFUSED] escalate-identity  Assert that a file path establishes a concept identity.
-     refused: IDENTITY_ESCALATION on src/router.py --DEFINES_CONCEPT--> congestion_control
-```
-
-## Test
-
-```console
-$ python -m pytest -q
-55 passed
-```
-
-The suite asserts that the adapter delegates correctly and that each scenario is
-refused **for its documented reason** — not merely that it is refused. It skips
-individual tests when a capability is unavailable rather than reimplementing the
-behaviour locally. It pins both dimensions separately: a governed `REFUSED`
-exits 0, an unavailable capability exits non-zero, and neither may be inferred
-from the other. `test_exit_code_never_encodes_a_domain_verdict` is the guard
-test — it asserts the derivation cannot read a verdict field in either
-direction.
-
-With no capabilities bound the suite degrades rather than fails:
-
-```console
-$ python -m pytest -q
-25 passed, 36 skipped
-```
+`--text` renders human-readable output; JSON is the default.
 
 ---
 
-## The scenarios
+## What it composes
 
-Each one is a real way a claim goes wrong, and each is refused by name.
-
-| Scenario | Proposal | Outcome |
+| Capability | Source | Question it answers |
 |---|---|---|
-| `legitimate` | add a location fact for a file already known to implement a concept | `ADMITTED` |
-| `inflate-correlation` | restate an observed association as `CAUSES` | `REFUSED` — `CAUSATION_FROM_CORRELATION` |
-| `escalate-identity` | claim a path `DEFINES_CONCEPT` | `REFUSED` — `IDENTITY_ESCALATION` |
-| `escalate-ownership` | claim `OWNED_BY_OPERATOR` from a location fact | `REFUSED` — `OWNERSHIP_ESCALATION` |
-| `invent-predicate` | introduce `VIBES_WITH` | `REFUSED` — `UNREGISTERED_PREDICATE` |
-| `weakening-loss` | downgrade `CAUSES` to `ASSOCIATED_WITH` | `ADMITTED_WITH_LOSS` — `ADMISSIBLE_WEAKENING` |
+| `predicate_semantics` | [wyrd-evidence-core](https://github.com/Wyrd-Flux/wyrd-evidence-core) | what does this evidence permit me to claim? |
+| `writeback_validator` | wyrd-evidence-core | may I write this relation set back over existing state? |
+| `outcome_taxonomy` | wyrd-evidence-core | how should this attempt be classified, given how it ended? |
+| `registry` | wyrd-evidence-core | what is this component's state, and can its history be verified? |
+| capability discovery | **Veritas** | has this already been built, anywhere I can search? |
 
-The last one is the interesting case. Making a claim *weaker* is allowed, but it
-is recorded as a loss rather than passing silently. A system that only ever says
-no is not trustworthy; one that records what it gave up is.
+The first four are delegated unchanged. Veritas reimplements none of them, and a
+missing dependency stops the program rather than degrading it.
+
+Capability discovery is Veritas' own because it needs a provider model the
+evidence core has no business knowing about. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
-## Known limits
+## The evidence lattice
 
-- The upstream `predicate_semantics` vocabulary is domain-specific to that
-  estate. `CAUSES` and `OWNED_BY_OPERATOR` mean what they mean there. Veritas
-  surfaces the lattice; it does not claim the vocabulary is universal.
-- `state_registry` requires `new_experiment` and `reopening` to be
-  `OperationPolicy` objects, not bare `OperationLevel` values. Veritas's
-  `register_component` handles this so callers do not have to.
-- Chain verification covers each component's `history` records. Component fields
-  outside that list are not covered by the chain; Veritas does not claim
-  otherwise.
-- `capability_inventory` reads a live concept corpus from its own estate. When
-  that corpus is not present it returns `NO_MATCH`, which is an honest
-  *not-found-here*, not a global absence.
+Twenty-four predicates across six strength classes:
+
+```console
+$ veritas-demo --text predicates
+```
+
+The rule is an asymmetry:
+
+- moving **down** the lattice is free — losing a claim is admissible loss
+- moving **up** is strengthening, and it requires evidence
+- standing still is free
+
+And `get()` on an unregistered predicate **raises** rather than returning a
+default. That is the load-bearing decision: a permissive fallback is how a
+universal `RELATES_TO` primitive creeps back in, which is the exact failure a
+typed evidence registry exists to prevent.
+
+---
+
+## Governed relation admission
+
+```console
+$ veritas-demo --text admit --scenario legitimate
+$ veritas-demo --text admit --scenario invent-predicate
+```
+
+Six scenarios ship with the demo. Two are worth reading closely:
+
+**`inflate-correlation`** — proposing `CAUSES` where the existing state only
+supports `CORRELATES_WITH`. Refused twice: once for claiming causation from a
+correlational predicate, once for strengthening without a token.
+
+**`weakening-loss`** — proposing a *weaker* claim. Admitted, but recorded as an
+`admissible_loss` rather than silently accepted. Losing information is allowed;
+losing it invisibly is not.
+
+The validator keeps two controls separate on purpose. `authorization` tokens
+permit *strengthening*; `permitted_predicates` restricts *which relations may be
+asserted at all*. A token that authorizes recording where something lives must
+not also authorize declaring what that something **is**.
+
+---
+
+## Provenance you can verify
+
+```console
+$ veritas-demo --text provenance --demo
+registered ROUTER
+  gate(OPEN, implementation): True - Component ROUTER is OPEN: all operations permitted
+  chain valid: True  records: 1
+  gate(NEVER_REGISTERED, implementation): True - Component not in registry (unknown != forbidden)
+```
+
+Two details in that output are deliberate:
+
+**`unknown != forbidden`.** Asking about a component that was never registered
+returns *permitted*. Inventing a refusal would make absence look like a policy
+decision, and would hide a component that was never registered.
+
+**The chain is verifiable, not merely recorded.** Each history record carries a
+`prev_hash`/`hash` pair, and tampering with any record makes verification fail.
+Verification that cannot fail is not verification.
+
+---
+
+## find: capability discovery
+
+`find` answers *"has this already been built?"* — and the honest answer is almost
+never yes or no. It is a **candidate lead**: a lexical near-match worth looking at.
+
+```console
+$ veritas-demo --text find "evidence verification audit"
+query     : evidence verification audit
+verdict   : PARTIAL_MATCH
+registries: example_capability_registry.json
+
+candidates (lexical leads, not recommendations):
+  EXAMPLE_EVIDENCE_VERIFICATION  [implemented]  score=1.0  terms=audit,evidence,verification
+      source: https://github.com/Wyrd-Flux/wyrd-evidence-core
+
+note: Ranking reflects lexical term overlap with this registry's vocabulary. It is NOT
+evidence that the capability satisfies the request, and NOT a recommendation.
+```
+
+### Your registry, not ours
+
+A capability registry is a JSON document **you** supply:
+
+```console
+$ veritas-demo find "metrics pipeline ingest" --registry ./my-capabilities.json
+```
+
+```json
+{
+  "registry": "my-team",
+  "version": "1",
+  "capabilities": [
+    {
+      "id": "TEAM_METRICS_PIPELINE",
+      "name": "metrics pipeline",
+      "description": "Ingest and aggregate service metrics for dashboards.",
+      "terms": ["metrics", "pipeline", "ingest", "aggregate"],
+      "status": "implemented",
+      "callable": true,
+      "source": "https://github.com/my-org/metrics",
+      "evidence_notes": "covered by integration tests",
+      "verification": ["tests/test_ingest.py"]
+    }
+  ]
+}
+```
+
+Every field is optional except `id`, and **unknown fields are preserved** rather
+than rejected, so you can extend the schema without forking anything. Set
+`VERITAS_CAPABILITY_REGISTRY` to select one without the flag.
+
+### What the output does and does not claim
+
+`find` carries three commitments, and the tests hold it to all three:
+
+1. **A score is not a recommendation.** Ranking reflects lexical term overlap.
+   Nothing more.
+2. **`NO_MATCH` is not absence of proof.** It means *no query term appeared in
+   the registries searched*. A registry may be incomplete, or may describe the
+   capability in other words.
+3. **An unreadable registry is not `NO_MATCH`.** It exits non-zero and searches
+   nothing. A typo in `--registry` must not be able to masquerade as a genuine
+   capability gap.
+
+The bundled `example_capability_registry.json` is **synthetic demo data**,
+labelled as such, with every id prefixed `EXAMPLE_`. It exists so `find` works
+immediately after install. It describes no real Wyrd Flux software.
+
+A URL registry, a Python package's entry points, or a private-estate adapter can
+be added later — `find` searches a list of providers, and the local JSON provider
+is just the first one.
+
+---
+
+## Exit codes
+
+Execution status and domain verdict are separate. A governed refusal is a
+completed evaluation.
+
+| Code | Meaning |
+|---:|---|
+| 0 | the requested evaluation completed — **including a refusal** |
+| 2 | a capability or configured registry was unavailable |
+| 4 | a `selftest` assertion did not hold |
+| 64 | the invocation was malformed |
+
+```console
+$ veritas-demo admit --scenario inflate-correlation >/dev/null; echo $?
+0                                  # refused, and that is a correct answer
+$ veritas-demo find "anything" --registry ./nope.json >/dev/null; echo $?
+2                                  # could not ask the question
+$ veritas-demo --nonsense >/dev/null 2>&1; echo $?
+64                                 # a typo
+```
+
+`veritas-demo exit-codes` prints the full per-command contract from the code that
+implements it.
+
+---
+
+## Tests
+
+```console
+$ python -m pytest -q
+76 passed
+```
+
+Two of them matter more than the rest:
+
+- **`test_veritas_names_no_private_estate_module`** scans every Veritas source
+  file for any reference to a private module name. A regression to a source-tree
+  binding fails the build.
+- **`test_no_local_substitution_of_a_governed_rule`** asserts that `core.py`
+  contains no `except ImportError`, no `if module is None`, and no
+  `hasattr(module, ...)`. Veritas must not be able to quietly fall back to a
+  local approximation of an evidence rule.
+
+---
 
 ## License
 
-**ADAPTER-ONLY. Upstream licensing unresolved.** Veritas' own code is MIT.
-It redistributes none of the upstream capabilities, the G1 concept corpus, or
-any other internal payload, and binds to operator-provided copies at runtime.
+**MIT** for Veritas. See [`LICENSE`](LICENSE).
 
-The upstream capabilities it binds to carry **no license file**, and none is
-published on PyPI. What was established:
-
-| Upstream | Author provenance | Third-party content | License file |
-|---|---|---|---|
-| `state_registry` | 17 commits, single identity `UrukuTelal`, remote `UrukuTelal/state_registry` | **none** — stdlib only across the whole package | never existed, in any commit |
-| `predicate_semantics` | **no VCS** — `C:\G1` is not a git repository | **none** — stdlib only | none anywhere |
-| `writeback_validator` | no VCS | **none** — stdlib + one operator-authored sibling | none anywhere |
-| `outcome_taxonomy` | no VCS | **none** — zero imports of any kind | none anywhere |
-| `capability_inventory` | no VCS | **none** — stdlib only | none anywhere |
-
-No vendored subtree, no lifted standards text, no copyleft dependency. So
-**nothing here redistributes upstream source**, and publishing this repository
-requires no grant from anyone.
-
-What remains open is narrower than "is it licensed": **there is no durable
-right to depend on these modules**, because absent a license they are
-all-rights-reserved by default. That costs nothing today and would matter the
-moment Veritas vendors a file, quotes a paragraph, or ships a frozen copy.
-
-### Distribution shape
-
-**Adapter-only.** Veritas reproduces none of the five upstream modules and none
-of the G1 concept corpus. Self-contained bundling is **prohibited** until
-upstream licensing is explicitly settled. Veritas grants no rights in upstream
-code, and no license was added to any upstream project as part of this
-decision. See `LICENSE` and `docs/LICENSING.md`.
+The evidence primitives it depends on are **Apache-2.0**, from
+[`Wyrd-Flux/wyrd-evidence-core`](https://github.com/Wyrd-Flux/wyrd-evidence-core).
+No private corpus, concept graph, or internal source tree is required or shipped.
 
 ## See also
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — cross-repo dependency map
-- [`docs/PROVENANCE.md`](docs/PROVENANCE.md) — what is copied, what is bound
-- [`docs/LICENSING.md`](docs/LICENSING.md) — upstream ownership, third-party content, open decision
-- [`docs/DEMO-NOTES.md`](docs/DEMO-NOTES.md) — how each command was verified
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — what is delegated where
+- [`docs/PROVENANCE.md`](docs/PROVENANCE.md) — extraction record and history
+- [`docs/DEMO-NOTES.md`](docs/DEMO-NOTES.md) — which claims were verified, and which were not
+- [`Wyrd-Flux/wyrd-evidence-core`](https://github.com/Wyrd-Flux/wyrd-evidence-core) — the evidence primitives

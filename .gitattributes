@@ -1,0 +1,7 @@
+# Normalise line endings: pure Python plus one JSON data file.
+* text=auto eol=lf
+*.py   text diff=python
+*.md   text
+*.json text
+*.toml text
+LICENSE text
