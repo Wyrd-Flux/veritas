@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veritas-demo"
+version = "0.1.0"
+description = "Capability discovery and governed claim admission over an existing evidence-graph estate."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Veritas contributors" }]
+keywords = ["provenance", "evidence", "capability-discovery", "governance"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Quality Assurance",
+]
+
+# Veritas has no runtime dependencies. The capabilities it binds to
+# (state_registry, predicate_semantics, writeback_validator, outcome_taxonomy,
+# capability_inventory) are NOT published on PyPI as of 2026-09-30; they are
+# loaded from source trees or site-packages at runtime. See README.md
+# "Binding to upstream capabilities" and veritas_demo/veritas.providers.json.
+dependencies = []
+
+[project.scripts]
+veritas-demo = "veritas_demo.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Wyrd-Flux/veritas"
+Source = "https://github.com/Wyrd-Flux/veritas"
+
+[tool.setuptools.packages.find]
+include = ["veritas_demo*"]
+
+[tool.setuptools.package-data]
+veritas_demo = ["veritas.providers.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

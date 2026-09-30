@@ -1,0 +1,75 @@
+MIT License
+
+Copyright (c) 2026 Veritas contributors
+
+--------------------------------------------------------------------------
+
+DISTRIBUTION SHAPE: ADAPTER-ONLY PUBLIC DEMO
+
+Operator decision, 2026-09-30. Veritas is published as an adapter-only
+demonstration. It binds at runtime to operator-provided upstream copies and
+reproduces none of them.
+
+Veritas redistributes NONE of the following:
+
+  * state_registry
+  * predicate_semantics.py
+  * writeback_validator.py
+  * outcome_taxonomy.py
+  * capability_inventory.py
+  * the G1 concept corpus
+  * any other internal payload
+
+Self-contained bundling is PROHIBITED until upstream licensing is
+explicitly settled by the operator.
+
+--------------------------------------------------------------------------
+
+UPSTREAM RIGHTS ARE NOT CONVEYED
+
+This license conveys rights to Veritas' own code only. It grants no rights in
+the upstream capabilities named above, and a recipient of this repository
+acquires no right to use, copy, or redistribute them by virtue of receiving it.
+
+Upstream ownership and licensing are UNRESOLVED. What was established:
+
+  * state_registry has 17 commits under a single identity (UrukuTelal) and a
+    remote at github.com/UrukuTelal/state_registry, but NO LICENSE has ever
+    existed in any commit.
+  * The four G1 modules are unversioned (C:\G1 is not a git repository),
+    unlicensed, and unattributed.
+  * All five are stdlib-only, with no vendored subtree and no copyleft
+    dependency, so no third-party terms flow through.
+
+Because none of them is redistributed here, publication requires no grant from
+anyone. But absent a license they are all-rights-reserved by default, so
+Veritas has no durable right to depend on them -- it simply copies nothing out.
+
+No license was added to any upstream project as part of this decision, and none
+should be inferred from this repository's presence.
+
+See docs/LICENSING.md for the full analysis and the remaining open question.
+
+--------------------------------------------------------------------------
+
+APPLICABLE TERMS (Veritas' own code only)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+See docs/LICENSING.md for the full analysis.
