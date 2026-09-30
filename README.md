@@ -70,13 +70,21 @@ lives with the others, and they were built independently. Veritas binds to them
 at runtime and **reproduces none of their code** — see
 [`docs/PROVENANCE.md`](docs/PROVENANCE.md):
 
-| Capability | Upstream module | What it decides |
-|---|---|---|
-| `registry` | `state_registry` (`C:/Projects/state_registry`) | component state, operation policy, hash-chained provenance |
-| `predicate_semantics` | `predicate_semantics` (`C:/G1/tools`) | the predicate strength lattice |
-| `writeback_validator` | `writeback_validator` (`C:/G1/tools`) | whether a proposed relation set is admitted |
-| `outcome_taxonomy` | `outcome_taxonomy` (`C:/G1/tools`) | how an attempt is classified when it ends |
-| `capability_inventory` | `capability_inventory` (`C:/G1/tools`) | which registered systems could do a stated need |
+| Capability | Upstream module | Source tree | What it decides |
+|---|---|---|---|
+| `registry` | `state_registry` | `C:/Projects/state_registry` | component state, operation policy, hash-chained provenance |
+| `predicate_semantics` | `predicate_semantics` | `C:/G1/tools` | the predicate strength lattice |
+| `writeback_validator` | `writeback_validator` | `C:/G1/tools` | whether a proposed relation set is admitted |
+| `outcome_taxonomy` | `outcome_taxonomy` | `C:/G1/tools` | how an attempt is classified when it ends |
+| `capability_inventory` | `capability_inventory` | `C:/G1/tools` | which registered systems could do a stated need |
+
+**The source tree is not the binding value.** The *Source tree* column records
+where each implementation lives — it is provenance, not configuration. Veritas
+binds through `VERITAS_<NAME>_PATH`, which takes the directory to place on
+`sys.path`. So `registry` binds with `C:/Projects`, the directory *containing*
+the `state_registry` package, **not** `C:/Projects/state_registry`; supplying the
+package directory itself does not resolve. Exact values are in
+[Bind to the upstream capabilities](#bind-to-the-upstream-capabilities).
 
 The repository boundaries in the source estate are implementation locations,
 not product boundaries. Veritas treats them that way. See
@@ -104,15 +112,37 @@ Veritas itself has **no runtime dependencies**.
 
 The five upstream modules are **not published on PyPI**. Point Veritas at them
 with environment variables, each accepting either a `.py` file or a directory
-to place on `sys.path`:
+to place on `sys.path`.
 
-| Variable | Points at |
-|---|---|
-| `VERITAS_REGISTRY_PATH` | directory containing the `state_registry` package |
-| `VERITAS_PREDICATE_SEMANTICS_PATH` | directory containing `predicate_semantics.py` |
-| `VERITAS_WRITEBACK_VALIDATOR_PATH` | directory containing `writeback_validator.py` |
-| `VERITAS_OUTCOME_TAXONOMY_PATH` | directory containing `outcome_taxonomy.py` |
-| `VERITAS_CAPABILITY_INVENTORY_PATH` | directory containing `capability_inventory.py` |
+Each variable takes the **containing** directory, not the module's own
+directory. `registry` is the case that trips people up, because it is a package
+in its own right:
+
+| Variable | Points at | Example value |
+|---|---|---|
+| `VERITAS_REGISTRY_PATH` | directory **containing** the `state_registry` package | `C:/Projects` |
+| `VERITAS_PREDICATE_SEMANTICS_PATH` | directory containing `predicate_semantics.py` | `C:/G1/tools` |
+| `VERITAS_WRITEBACK_VALIDATOR_PATH` | directory containing `writeback_validator.py` | `C:/G1/tools` |
+| `VERITAS_OUTCOME_TAXONOMY_PATH` | directory containing `outcome_taxonomy.py` | `C:/G1/tools` |
+| `VERITAS_CAPABILITY_INVENTORY_PATH` | directory containing `capability_inventory.py` | `C:/G1/tools` |
+
+For `registry`, `C:/Projects/state_registry` — the source tree recorded in
+[What it composes](#what-it-composes) — does **not** resolve, because placing a
+package directory on `sys.path` makes the package's *contents* importable, not
+the package itself. Supply its parent:
+
+```console
+$ export VERITAS_REGISTRY_PATH=C:/Projects/state_registry
+$ veritas-demo doctor
+  [MISS] registry               UNAVAILABLE
+         ModuleNotFoundError: No module named 'state_registry'
+
+$ export VERITAS_REGISTRY_PATH=C:/Projects
+$ veritas-demo doctor
+  [ok  ] registry               AVAILABLE
+```
+
+The complete binding for the verification environment:
 
 ```console
 $ export VERITAS_REGISTRY_PATH=C:/Projects

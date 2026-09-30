@@ -152,6 +152,11 @@ $ export VERITAS_CAPABILITY_INVENTORY_PATH=C:/G1/tools
 Two directories is the whole dependency footprint. `state_registry` is a package
 directory; the other four are loose modules in one directory.
 
+Note the asymmetry in the bindings: `VERITAS_REGISTRY_PATH` is `C:/Projects`, the
+parent of the `state_registry` package directory, while the other four point at
+`C:/G1/tools`, which contains the loose modules directly. Passing the package
+directory itself does not resolve `state_registry`.
+
 `writeback_validator` imports `predicate_semantics` as a sibling, so the two
 must be resolved from the same place. Veritas handles this: once
 `writeback_validator` resolves from a directory, that directory is on

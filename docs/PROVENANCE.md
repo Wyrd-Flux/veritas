@@ -7,6 +7,11 @@ Recorded 2026-09-30.
 
 ## Upstream sources
 
+These are **source trees** — where the implementations live. They are not the
+values to supply to `VERITAS_<NAME>_PATH`, which take the directory to place on
+`sys.path`. For `registry` that is `C:/Projects`, the parent of
+`C:/Projects/state_registry`; see the README bindings table.
+
 | Capability | Source tree | Files used | Written by |
 |---|---|---|---|
 | `registry` | `C:/Projects/state_registry` | `registry.py`, `schema.py` | the estate's state-registry workstream |
