@@ -3,75 +3,135 @@
   "version": "1",
   "synthetic": true,
   "_note": "SYNTHETIC EXAMPLE DATA. Every capability below is invented to demonstrate the shape of a capability registry. None of it describes real Wyrd Flux software, and none of it is a claim that any of these capabilities exist. Point veritas-demo find at your own registry to search something real.",
-
   "capabilities": [
     {
       "id": "EXAMPLE_EVIDENCE_VERIFICATION",
       "name": "evidence verification",
       "description": "Demonstration capability: checks that a claim carries evidence of the strength the predicate lattice requires.",
-      "terms": ["evidence", "verify", "verification", "check", "audit", "claim"],
-      "aliases": ["evidence check", "claim verification"],
+      "terms": [
+        "evidence",
+        "verify",
+        "verification",
+        "check",
+        "audit",
+        "claim"
+      ],
+      "aliases": [
+        "evidence check",
+        "claim verification"
+      ],
       "status": "implemented",
-      "source": "https://github.com/Wyrd-Flux/wyrd-evidence-core",
+      "source": "https://github.com/Wyrd-Flux/veritas",
       "callable": true,
       "evidence_notes": "Example only. Illustrates how a record states where its evidence comes from.",
-      "verification": ["tests/test_evidence_core.py"],
+      "verification": [
+        "tests/test_veritas.py"
+      ],
       "notes": "extra fields such as this one are preserved, not rejected"
     },
     {
       "id": "EXAMPLE_RELATION_WRITEBACK",
       "name": "relation writeback validation",
       "description": "Demonstration capability: validates a proposed set of relations against the current set before it is written.",
-      "terms": ["writeback", "validation", "relation", "relations", "validate", "edge"],
-      "aliases": ["write back", "relation gate"],
+      "terms": [
+        "writeback",
+        "validation",
+        "relation",
+        "relations",
+        "validate",
+        "edge"
+      ],
+      "aliases": [
+        "write back",
+        "relation gate"
+      ],
       "status": "implemented",
-      "source": "https://github.com/Wyrd-Flux/wyrd-evidence-core",
+      "source": "https://github.com/Wyrd-Flux/veritas",
       "callable": true,
       "evidence_notes": "Example only.",
-      "verification": ["tests/test_evidence_core.py"]
+      "verification": [
+        "tests/test_veritas.py"
+      ]
     },
     {
       "id": "EXAMPLE_OUTCOME_CLASSIFICATION",
       "name": "outcome classification",
       "description": "Demonstration capability: classifies how an attempt ended, keeping a correct refusal distinct from a failure.",
-      "terms": ["outcome", "classification", "taxonomy", "refused", "resolved"],
-      "aliases": ["attempt outcome"],
+      "terms": [
+        "outcome",
+        "classification",
+        "taxonomy",
+        "refused",
+        "resolved"
+      ],
+      "aliases": [
+        "attempt outcome"
+      ],
       "status": "implemented",
-      "source": "https://github.com/Wyrd-Flux/wyrd-evidence-core",
+      "source": "https://github.com/Wyrd-Flux/veritas",
       "callable": true,
-      "evidence_notes": "Example only."
+      "evidence_notes": "Example only.",
+      "verification": []
     },
     {
       "id": "EXAMPLE_COMPONENT_REGISTRY",
       "name": "component state registry",
       "description": "Demonstration capability: tracks component disposition and per-operation policy with a verifiable history chain.",
-      "terms": ["registry", "component", "state", "disposition", "policy", "history"],
-      "aliases": ["state registry", "component registry"],
+      "terms": [
+        "registry",
+        "component",
+        "state",
+        "disposition",
+        "policy",
+        "history"
+      ],
+      "aliases": [
+        "state registry",
+        "component registry"
+      ],
       "status": "implemented",
-      "source": "https://github.com/Wyrd-Flux/wyrd-evidence-core",
+      "source": "https://github.com/Wyrd-Flux/veritas",
       "callable": true,
-      "evidence_notes": "Example only."
+      "evidence_notes": "Example only.",
+      "verification": []
     },
     {
       "id": "EXAMPLE_MODEL_PLACEMENT",
       "name": "resource-aware model placement",
       "description": "Demonstration capability: refuses a model that does not fit observed hardware before attempting a load, and verifies residency afterwards.",
-      "terms": ["placement", "model", "gpu", "vram", "resource", "admission"],
-      "aliases": ["placement gate", "resource admission"],
+      "terms": [
+        "placement",
+        "model",
+        "gpu",
+        "vram",
+        "resource",
+        "admission"
+      ],
+      "aliases": [
+        "placement gate",
+        "resource admission"
+      ],
       "status": "implemented",
       "source": "https://github.com/Wyrd-Flux/wyrd-placement-core",
       "callable": true,
-      "evidence_notes": "Example only."
+      "evidence_notes": "Example only.",
+      "verification": []
     },
     {
       "id": "EXAMPLE_PLANNED_NOT_BUILT",
       "name": "unimplemented example capability",
       "description": "Demonstration capability that is registered but not callable, so that the not-callable qualifier can be shown.",
-      "terms": ["unimplemented", "stub", "placeholder", "planned"],
+      "terms": [
+        "unimplemented",
+        "stub",
+        "placeholder",
+        "planned"
+      ],
       "status": "planned",
       "source": "",
       "callable": false,
-      "evidence_notes": "Registered but not callable. A registry is allowed to describe things that do not exist yet."
+      "evidence_notes": "Registered but not callable. A registry is allowed to describe things that do not exist yet.",
+      "verification": []
     }
   ]
 }

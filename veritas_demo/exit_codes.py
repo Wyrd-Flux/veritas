@@ -81,14 +81,14 @@ CONTRACTS: dict[str, ExitContract] = {
         command="predicates",
         required_capability="predicate_semantics",
         success="the lattice loaded and rendered",
-        failure="wyrd-evidence-core is not installed",
+        failure="unavailable",
         notes="a predicate's strength class is data, not an exit condition",
     ),
     "outcomes": ExitContract(
         command="outcomes",
         required_capability="outcome_taxonomy",
         success="the taxonomy loaded and rendered",
-        failure="wyrd-evidence-core is not installed",
+        failure="unavailable",
         notes="REFUSED_* classes are part of the vocabulary, not failures",
     ),
     "admit": ExitContract(
@@ -108,7 +108,7 @@ CONTRACTS: dict[str, ExitContract] = {
         command="provenance",
         required_capability="registry",
         success="the requested check executed",
-        failure="wyrd-evidence-core is not installed",
+        failure="unavailable",
         notes=(
             "a policy refusal -- gate permitted=false, or a component in a "
             "terminal disposition -- is a successful evaluation and exits 0"
@@ -118,7 +118,7 @@ CONTRACTS: dict[str, ExitContract] = {
         command="selftest",
         required_capability="writeback_validator",
         success="every expected behavioral assertion held",
-        failure="an assertion failed, or wyrd-evidence-core is not installed",
+        failure="an assertion did not hold",
         notes=(
             "the one command whose domain result IS its exit condition: it "
             "asserts expected behavior rather than reporting it"

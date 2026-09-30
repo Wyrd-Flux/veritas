@@ -7,9 +7,9 @@ Veritas exposes four capabilities:
 ``admit``       before/after relation set -> accept / refuse / admissible-loss verdict
 ``provenance``  component state transitions -> hash-chained, policy-gated record
 
-The first three delegate to ``wyrd-evidence-core``, an ordinary installed
-dependency. The fourth is Veritas' own: capability discovery, which needs a
-provider model the evidence core has no business knowing about.
+The first three delegate to :mod:`veritas_demo.evidence`, folded into this
+package. The fourth is Veritas' own: capability discovery, which needs a
+provider model the evidence primitives have no business knowing about.
 
 Every refusal reason is the upstream module's own. Veritas adds no opinions.
 """
@@ -23,11 +23,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
 
-from wyrd_evidence_core import outcome_taxonomy
-from wyrd_evidence_core import predicate_semantics as _predicates
-from wyrd_evidence_core import registry as _registry
-from wyrd_evidence_core import registry_schema as _schema
-from wyrd_evidence_core import writeback_validator as _writeback
+from .evidence import outcome_taxonomy
+from .evidence import predicate_semantics as _predicates
+from .evidence import registry as _registry
+from .evidence import registry_schema as _schema
+from .evidence import writeback_validator as _writeback
 
 from .capabilities import (
     CapabilityRegistryProvider,
@@ -38,8 +38,8 @@ from .capabilities import (
 
 VERITAS_VERSION = "0.2.0"
 
-#: Capabilities supplied by wyrd-evidence-core. Resolved at import time from an
-#: installed dependency, so there is nothing here that can fail to load.
+#: The evidence primitives folded into this package. Resolved at import time
+#: from files inside it, so there is nothing here that can fail to load.
 EVIDENCE_CORE_CAPABILITIES = (
     "predicate_semantics",
     "writeback_validator",
@@ -123,7 +123,7 @@ class VeritasSession:
                 for name in EVIDENCE_CORE_CAPABILITIES
             },
             resolutions={
-                name: {"detail": f"wyrd-evidence-core  ({name})"}
+                name: {"detail": f"veritas_demo.evidence  ({name})"}
                 for name in EVIDENCE_CORE_CAPABILITIES
             },
         )

@@ -471,7 +471,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Veritas: governed claim admission and capability discovery. Evidence "
             "semantics, writeback validation, the outcome taxonomy and the "
-            "component registry come from wyrd-evidence-core. Capability discovery "
+            "component registry are folded into this package. Capability discovery "
             "searches registries you supply."
         ),
     )

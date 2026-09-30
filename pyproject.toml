@@ -17,12 +17,9 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
 ]
 
-# The evidence primitives are an ordinary dependency now. GitHub-only
-# distribution in this phase, so the requirement is a direct reference rather
-# than a PyPI name -- pip resolves it from the git repository.
-dependencies = [
-  "wyrd-evidence-core @ git+https://github.com/Wyrd-Flux/wyrd-evidence-core.git",
-]
+# No dependencies. The evidence primitives are folded into this package, so a
+# clone is runnable on its own with nothing else installed.
+dependencies = []
 
 [project.scripts]
 veritas-demo = "veritas_demo.cli:main"
@@ -30,7 +27,6 @@ veritas-demo = "veritas_demo.cli:main"
 [project.urls]
 Homepage = "https://github.com/Wyrd-Flux/veritas"
 Source = "https://github.com/Wyrd-Flux/veritas"
-EvidenceCore = "https://github.com/Wyrd-Flux/wyrd-evidence-core"
 
 [tool.setuptools.packages.find]
 include = ["veritas_demo*"]

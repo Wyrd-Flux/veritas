@@ -1,9 +1,11 @@
 """Veritas: governed claim admission, with capability discovery over your registries.
 
-The evidence primitives -- predicate semantics, relation-set writeback
-validation, the outcome taxonomy, and the component registry -- come from
-``wyrd-evidence-core``, an ordinary installed dependency. Veritas adds no
-reimplementation of any governed behaviour and no opinions about any refusal.
+Self-contained: the evidence primitives -- predicate semantics, relation-set
+writeback validation, the outcome taxonomy, and the component registry -- are
+folded into :mod:`veritas_demo.evidence`. Veritas adds no reimplementation of any
+governed behaviour and no opinions about any refusal.
+
+There are no dependencies to install. A clone is runnable on its own.
 
 Capability discovery is Veritas' own, because it needs a provider model: a
 registry is whatever the caller supplies, not a corpus baked into the package.

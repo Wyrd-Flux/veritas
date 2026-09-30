@@ -8,7 +8,7 @@ rather than argued.
 | | |
 |---|---|
 | Python | 3.11 |
-| Dependency | `wyrd-evidence-core` 0.1.0 from GitHub |
+| Dependency | none (`dependencies = []`) |
 | Private estate | **not required, and not consulted** |
 
 Nothing here needs a GPU, a model, or a network. Veritas is entirely local, which
@@ -27,8 +27,8 @@ $ python -m venv .venv
 $ .venv/bin/pip install .
 ```
 
-Resolved `wyrd-evidence-core` from GitHub. No `VERITAS_*` variable was set, and no
-`C:\G1` or `C:\Projects` path existed on `sys.path`.
+No dependency was resolved, because there are none. No `VERITAS_*` variable was set, and
+no `C:\G1` or `C:\Projects` path existed on `sys.path`.
 
 **2 — `find` against the bundled synthetic registry**
 

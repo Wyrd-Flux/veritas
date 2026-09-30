@@ -1,12 +1,11 @@
 # Architecture
 
-Veritas is a small application over four evidence primitives from one installed
-package, plus a capability-discovery layer it owns. This document records where
-each boundary falls and why.
+Veritas is self-contained: four evidence primitives and a capability-discovery
+layer, all in this repository. There are no dependencies to resolve. This
+document records where the internal boundaries fall and why.
 
 ## The composition
 
-```
                     ┌──────────────────────────────────────────┐
                     │           veritas_demo.cli               │
                     │  doctor · find · predicates · outcomes ·  │
@@ -17,17 +16,20 @@ each boundary falls and why.
         │      veritas_demo.core       │   │  veritas_demo.capabilities│
         │  VeritasSession              │   │  CapabilityRegistryProvider│
         │  builds inputs, unpacks      │   │  LocalJsonRegistryProvider │
-        │  upstream results            │   │  search() over N providers │
+        │  the primitives' results     │   │  search() over N providers │
         │  NO policy of its own        │   │  bundled synthetic example │
         └──────────────┬───────────────┘   └────────────────────────────┘
                        │ import
         ┌──────────────▼───────────────────────────────────────────────┐
-        │            wyrd-evidence-core  (Apache-2.0)                   │
+        │            veritas_demo.evidence                              │
+        │            (no dependencies, no external package)             │
         │                                                                │
         │  predicate_semantics   the strength lattice, 24 predicates    │
         │  writeback_validator   relation-set admission                 │
         │  outcome_taxonomy      10 classes in 4 families               │
         │  registry              component state, policy, hash chain    │
+        │  registry_schema       the types those two share              │
+        └────────────────────────────────────────────────────────────────┘
         └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -35,25 +37,26 @@ each boundary falls and why.
 
 | Veritas operation | Delegates to | Decides |
 |---|---|---|
-| `predicates` | `predicate_semantics` | predicate strength, directionality, powers |
-| `admit` | `writeback_validator` | accept / refuse / admissible-loss, with reason codes |
-| `outcomes` | `outcome_taxonomy` | which family an outcome class belongs to |
-| `provenance` | `registry` | state transitions, the policy gate, chain validity |
+| `predicates` | `evidence/predicate_semantics` | predicate strength, directionality, powers |
+| `admit` | `evidence/writeback_validator` | accept / refuse / admissible-loss, with reason codes |
+| `outcomes` | `evidence/outcome_taxonomy` | which family an outcome class belongs to |
+| `provenance` | `evidence/registry` | state transitions, the policy gate, chain validity |
 | `find` | **nothing** — it is Veritas' own | lexical candidate leads |
 
-The first four return upstream's own answers. Veritas builds the inputs and
-renders the outputs, and changes neither.
+`VeritasSession` builds the inputs and renders the outputs, and changes neither.
+The primitives are unmodified from extraction and carry their own self-check
+suites, which the test suite runs as the behavioural specification.
 
 ## The one thing Veritas owns
 
-`capabilities.py` exists because the internal capability inventory it replaced
-was coupled to a private corpus, and the useful part of it — *"a lexical match is
-a candidate lead"* — has nothing to do with evidence semantics. Putting it in
-`wyrd-evidence-core` would have made the evidence library carry capability-search
-vocabulary it has no use for.
+`capabilities.py` is a separate module, not a separate package. The internal
+capability inventory it replaced was coupled to a private corpus, and the useful
+part of it — *"a lexical match is a candidate lead"* — has nothing to do with
+evidence semantics. Keeping it beside the primitives rather than inside them
+keeps the evidence code free of capability-search vocabulary.
 
 It is ~450 lines and depends on nothing but the standard library, which is the
-condition for it being obviously separable later if a second consumer appears.
+condition for it being separable later if a genuine second consumer appears.
 
 ### The provider seam
 
@@ -89,8 +92,10 @@ missing dependency stops the program at import, loudly. Enforced by
 
 **Silent regression to a source-tree binding.** A contributor could reintroduce a
 private-module import without noticing. `test_veritas_names_no_private_estate_module`
-scans every source file for any reference to a private module name, whether by
-import or by attribute access.
+tokenises every shipped file, discards comments and docstrings — which discuss
+these names at length — and fails on any *executable* reference to a private
+module. `test_no_other_wyrd_flux_package_is_required` separately asserts that
+importing Veritas pulls in no other Wyrd Flux package.
 
 **Absence read as prohibition.** Three places enforce the opposite convention,
 because each was a real defect:
@@ -104,10 +109,11 @@ because each was a real defect:
 ## Layering rules this codebase follows
 
 - **No governed policy in Veritas.** No predicate strength, no refusal code, no
-  admissibility rule. Those belong to `wyrd-evidence-core` and are not duplicated.
-- **No source-tree binding.** No `sys.path` manipulation, no environment
-  variables for capability loading, no provider-resolution layer. The dependency
-  graph is what `pyproject.toml` declares, and a test holds the source to it.
+  admissibility rule. Those belong to the primitives in `veritas_demo/evidence`
+  and are not duplicated.
+- **No dependency at all.** `dependencies = []`. No `sys.path` manipulation, no
+  environment variables, no provider-resolution layer. A clone is runnable on its
+  own, and two tests hold the package to that.
 - **No private corpus.** The only registry shipped is synthetic, labelled, and
   uses `EXAMPLE_`-prefixed ids.
 - **Ranking is never a recommendation.** `find` carries the caveat in its data,

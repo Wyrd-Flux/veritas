@@ -50,13 +50,16 @@ $ .venv/bin/veritas-demo selftest
 ```
 
 That is the whole setup. No environment variables, no source-tree bindings, no
-access to anything private. The evidence primitives are an ordinary dependency:
+access to anything private, and nothing else to install.
 
 ```
-veritas → wyrd-evidence-core → Python stdlib
+veritas → Python stdlib
 ```
 
-Python 3.11 or newer. Nothing else.
+**No dependencies at all** (`dependencies = []`). The evidence primitives live in
+[`veritas_demo/evidence/`](veritas_demo/evidence) — the lattice, the validator,
+the taxonomy and the registry are files in this repository, not a package you
+have to resolve first. Python 3.11 or newer, and that is the whole requirement.
 
 ---
 
@@ -79,16 +82,19 @@ $ veritas-demo exit-codes
 
 ## What it composes
 
-| Capability | Source | Question it answers |
+| Capability | Where it lives | Question it answers |
 |---|---|---|
-| `predicate_semantics` | [wyrd-evidence-core](https://github.com/Wyrd-Flux/wyrd-evidence-core) | what does this evidence permit me to claim? |
-| `writeback_validator` | wyrd-evidence-core | may I write this relation set back over existing state? |
-| `outcome_taxonomy` | wyrd-evidence-core | how should this attempt be classified, given how it ended? |
-| `registry` | wyrd-evidence-core | what is this component's state, and can its history be verified? |
-| capability discovery | **Veritas** | has this already been built, anywhere I can search? |
+| `predicate_semantics` | `veritas_demo/evidence/` | what does this evidence permit me to claim? |
+| `writeback_validator` | `veritas_demo/evidence/` | may I write this relation set back over existing state? |
+| `outcome_taxonomy` | `veritas_demo/evidence/` | how should this attempt be classified, given how it ended? |
+| `registry` | `veritas_demo/evidence/` | what is this component's state, and can its history be verified? |
+| capability discovery | `veritas_demo/capabilities.py` | has this already been built, anywhere I can search? |
 
-The first four are delegated unchanged. Veritas reimplements none of them, and a
-missing dependency stops the program rather than degrading it.
+The first four are the implementation, unmodified, and they bring their own
+self-check suites: 24 predicate cross-checks, 11 verdict cases and 11
+self-qualification cases, run by the test suite as the behavioural specification.
+Veritas reimplements none of that behaviour and adds no opinions about any
+refusal.
 
 Capability discovery is Veritas' own because it needs a provider model the
 evidence core has no business knowing about. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -175,7 +181,7 @@ registries: example_capability_registry.json
 
 candidates (lexical leads, not recommendations):
   EXAMPLE_EVIDENCE_VERIFICATION  [implemented]  score=1.0  terms=audit,evidence,verification
-      source: https://github.com/Wyrd-Flux/wyrd-evidence-core
+      source: https://github.com/Wyrd-Flux/veritas
 
 note: Ranking reflects lexical term overlap with this registry's vocabulary. It is NOT
 evidence that the capability satisfies the request, and NOT a recommendation.
@@ -271,9 +277,9 @@ $ python -m pytest -q
 
 Two of them matter more than the rest:
 
-- **`test_veritas_names_no_private_estate_module`** scans every Veritas source
-  file for any reference to a private module name. A regression to a source-tree
-  binding fails the build.
+- **`test_veritas_names_no_private_estate_module`** tokenises every shipped
+  file, discards comments and docstrings, and fails on any executable reference
+  to a private module name. A regression to a source-tree binding fails the build.
 - **`test_no_local_substitution_of_a_governed_rule`** asserts that `core.py`
   contains no `except ImportError`, no `if module is None`, and no
   `hasattr(module, ...)`. Veritas must not be able to quietly fall back to a
@@ -285,13 +291,14 @@ Two of them matter more than the rest:
 
 **MIT** for Veritas. See [`LICENSE`](LICENSE).
 
-The evidence primitives it depends on are **Apache-2.0**, from
-[`Wyrd-Flux/wyrd-evidence-core`](https://github.com/Wyrd-Flux/wyrd-evidence-core).
-No private corpus, concept graph, or internal source tree is required or shipped.
+The evidence primitives in `veritas_demo/evidence/` were originally extracted as
+a separate Apache-2.0 package and are now folded in here. That history is
+preserved rather than rewritten — see [`docs/PROVENANCE.md`](docs/PROVENANCE.md).
+No private corpus, concept graph, or internal source tree is required or
+shipped.
 
 ## See also
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — what is delegated where
 - [`docs/PROVENANCE.md`](docs/PROVENANCE.md) — extraction record and history
 - [`docs/DEMO-NOTES.md`](docs/DEMO-NOTES.md) — which claims were verified, and which were not
-- [`Wyrd-Flux/wyrd-evidence-core`](https://github.com/Wyrd-Flux/wyrd-evidence-core) — the evidence primitives

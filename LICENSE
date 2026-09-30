@@ -6,33 +6,40 @@ Copyright (c) 2026 Veritas contributors
 
 DISTRIBUTION SHAPE
 
-Veritas depends on wyrd-evidence-core, a separate public package licensed
-under Apache-2.0:
+Veritas is self-contained. It declares no runtime dependencies: the evidence
+primitives -- predicate semantics, relation-set writeback validation, the outcome
+taxonomy, and the component registry -- are files under veritas_demo/evidence/.
 
-    https://github.com/Wyrd-Flux/wyrd-evidence-core
+    git clone https://github.com/Wyrd-Flux/veritas
+    python -m venv .venv && .venv/bin/pip install .
 
-That dependency is installed normally by pip. Veritas copies none of it and
-grants no rights in it; see its own LICENSE for the terms that apply to it.
-
-Veritas ships no private corpus, no concept graph, and no internal source tree.
-It is runnable by anyone with Python 3.11 and network access to GitHub.
+Nothing else is needed. No environment variables, no source-tree bindings, no
+private corpus, no concept graph, no other Wyrd Flux package.
 
 --------------------------------------------------------------------------
 
-DERIVED WORK: PROVENANCE
+HISTORY: THIS CODE WAS ONCE A SEPARATE PACKAGE
 
-Veritas' evidence primitives were extracted from internal source trees for the
-public release. The extraction, the exact source paths and SHA-256 hashes, and
-the operator attestation are recorded in docs/PROVENANCE.md.
+The evidence primitives were extracted from internal source trees for the public
+release, published first as a separate Apache-2.0 package
+(Wyrd-Flux/wyrd-evidence-core), and then folded into this repository when it
+became clear that package had exactly one consumer.
 
-One provenance fact is recorded rather than smoothed over: three of those
-modules had NO VERSION CONTROL HISTORY AT SOURCE (NO_VCS_HISTORY_AT_SOURCE). No
-commit history was fabricated for them, in either the extraction or this
-repository.
+That repository was archived, not deleted. Its commit history, its own
+PROVENANCE.md, and the provenance records it carried remain readable. This
+repository's git history was not rewritten either: the adapter-only release and
+the separate-core release are both still present.
 
-The extracted public code carries its own Apache-2.0 license in
-wyrd-evidence-core. No license file was added to, or modified in, any internal
-source repository as part of that extraction or of this migration.
+For code moved into veritas_demo/evidence/, docs/PROVENANCE.md records:
+
+  * the original internal source path for each file
+  * the source SHA-256, where one was recorded
+  * the public core commit the code passed through
+  * the extraction and folding changes, file by file
+  * the operator attestation
+  * NO_VCS_HISTORY_AT_SOURCE, for the three modules that had none
+
+--------------------------------------------------------------------------
 
 --------------------------------------------------------------------------
 

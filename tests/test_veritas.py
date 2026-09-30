@@ -89,32 +89,62 @@ def test_every_declared_capability_is_available(session: VeritasSession) -> None
         assert session.load.status(name) is CapabilityStatus.AVAILABLE
 
 
-def test_resolution_names_the_supplying_dependency(session: VeritasSession) -> None:
+def test_resolution_names_the_supplying_module(session: VeritasSession) -> None:
     report = session.load.as_dict()
     assert set(report["statuses"]) == set(REQUIRED_FOR_FULL_RUN)
     for name, resolution in report["resolutions"].items():
-        assert "wyrd-evidence-core" in resolution["detail"], (
-            f"{name} does not say which package supplied it"
+        assert "veritas_demo.evidence" in resolution["detail"], (
+            f"{name} does not say which module supplied it"
         )
 
 
-def test_capabilities_come_from_an_installed_package_not_a_source_tree() -> None:
-    """The point of the migration: no private tree may be consulted."""
-    import wyrd_evidence_core
+def test_capabilities_come_from_inside_this_package() -> None:
+    """Self-contained: every capability is a file in this repository.
 
-    module_dir = Path(wyrd_evidence_core.__file__).parent
+    No installed package, and certainly no private source tree, may be
+    consulted. If this regresses, the demo stops working for anyone who has not
+    happened to install something else.
+    """
+    import veritas_demo.evidence as evidence
+
+    module_dir = Path(evidence.__file__).parent
     for name in REQUIRED_FOR_FULL_RUN:
-        imported = getattr(wyrd_evidence_core, name, None)
-        assert imported is not None, f"{name} is not in wyrd-evidence-core"
+        imported = getattr(evidence, name, None)
+        assert imported is not None, f"{name} is not in veritas_demo.evidence"
         if hasattr(imported, "__file__"):
             assert Path(imported.__file__).parent == module_dir
+
+
+def test_the_package_declares_no_dependencies() -> None:
+    """A clone must be runnable on its own, with nothing else installed."""
+    import tomllib
+
+    import veritas_demo
+
+    root = Path(veritas_demo.__file__).parent.parent
+    data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert data["project"]["dependencies"] == [], data["project"]["dependencies"]
+
+
+def test_no_other_wyrd_flux_package_is_required() -> None:
+    """The folding must not leave a transitive dependency behind."""
+    import sys
+
+    import veritas_demo  # noqa: F401
+
+    others = [
+        m for m in sys.modules
+        if m.startswith("wyrd_") and not m.startswith("wyrd_flux")
+        and not m.startswith("veritas_demo")
+    ]
+    assert others == [], others
 
 
 def test_veritas_names_no_private_estate_module() -> None:
     """Static check: no Veritas source file may reference a private module.
 
-    ``wyrd_evidence_core.predicate_semantics`` is the installed dependency; a
-    bare ``predicate_semantics`` or ``state_registry`` would be the private tree.
+    ``from .evidence import predicate_semantics`` is ours; a bare
+    ``predicate_semantics`` or ``state_registry`` would be the private tree.
     """
     import re
 
@@ -127,19 +157,34 @@ def test_veritas_names_no_private_estate_module() -> None:
     )
     offenders = []
     for path in package_dir.rglob("*.py"):
-        for lineno, line in enumerate(path.read_text(encoding="utf8").splitlines(), 1):
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
-            if stripped.startswith(("from wyrd_evidence_core", "import wyrd_evidence_core")):
-                continue  # this is the installed dependency, not the private tree
-            names_private_module = re.search(rf"\b(?:{private})\b", stripped)
+        # Docstrings describe the private names at length, and so does prose in
+        # comments. Only executable lines can import anything, so only those are
+        # scanned: tokenise and keep the code, drop every STRING and COMMENT.
+        import io
+        import tokenize
+
+        source = path.read_text(encoding="utf8")
+        code_lines: dict[int, str] = {}
+        try:
+            for token in tokenize.generate_tokens(io.StringIO(source).readline):
+                if token.type in (tokenize.STRING, tokenize.COMMENT):
+                    continue
+                code_lines.setdefault(token.start[0], "")
+                code_lines[token.start[0]] += token.string
+        except tokenize.TokenError:  # pragma: no cover - would fail the suite
+            offenders.append(f"{path.name}: unparseable")
+            continue
+
+        for lineno, executable in sorted(code_lines.items()):
+            if executable.startswith(("from .evidence", "from veritas_demo.evidence")):
+                continue  # folded in: these modules are ours now
+            names_private_module = re.search(rf"\b(?:{private})\b", executable)
             if not names_private_module:
                 continue
-            is_import = stripped.startswith(("import ", "from "))
-            used_as_module = re.search(rf"\b(?:{private})\.", stripped) is not None
-            if is_import or (used_as_module and "wyrd_evidence_core." not in stripped):
-                offenders.append(f"{path.name}:{lineno}: {stripped}")
+            if executable.startswith(("import ", "from ")):
+                offenders.append(f"{path.name}:{lineno}: {executable}")
+            elif re.search(rf"\b(?:{private})\.", executable):
+                offenders.append(f"{path.name}:{lineno}: {executable}")
     assert offenders == [], offenders
 
 
@@ -409,14 +454,15 @@ def test_admission_is_deterministic(session: VeritasSession) -> None:
     assert to_json(first) == to_json(second)
 
 
-def test_a_missing_dependency_fails_loudly_at_import(
+def test_a_missing_primitive_fails_loudly_at_import(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A missing evidence core must stop the program, not degrade it.
+    """A missing evidence primitive must stop the program, not degrade it.
 
-    There is no local approximation to fall back on, by design: a Veritas that
-    quietly admitted claims when its evidence lattice was missing would be worse
-    than one that will not start.
+    The primitives are files in this package now rather than an installed
+    dependency, but the requirement is unchanged and matters more: a Veritas that
+    quietly admitted claims when its evidence lattice was unavailable would be
+    worse than one that will not start.
     """
     import builtins
     import importlib
@@ -426,8 +472,10 @@ def test_a_missing_dependency_fails_loudly_at_import(
     real_import = builtins.__import__
 
     def refuse(name, *args, **kwargs):
-        if name.startswith("wyrd_evidence_core"):
-            raise ModuleNotFoundError("No module named 'wyrd_evidence_core'")
+        # A relative ``from .evidence import x`` reaches __import__ as the
+        # subpackage name, not the module name, so this is what has to be blocked.
+        if name == "evidence" or name.endswith(".evidence"):
+            raise ModuleNotFoundError("evidence primitives unavailable")
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", refuse)
@@ -498,7 +546,7 @@ def test_open_component_permits_operation(session: VeritasSession) -> None:
 def test_terminal_disposition_blocks_operation(session: VeritasSession) -> None:
     registry = session.open_registry()
     session.register_component(registry, name="ROUTER", repository="r", path="p.py")
-    from wyrd_evidence_core import registry_schema as schema
+    from veritas_demo.evidence import registry_schema as schema
     registry.transition(
         "ROUTER", schema.Disposition.PRESERVE, established_by="test", evidence=["e"]
     )
@@ -516,7 +564,7 @@ def test_chain_verification_detects_tampering(session: VeritasSession) -> None:
 
     registry = session.open_registry()
     session.register_component(registry, name="ROUTER", repository="r", path="p.py")
-    from wyrd_evidence_core import registry_schema as schema
+    from veritas_demo.evidence import registry_schema as schema
     registry.transition(
         "ROUTER", schema.Disposition.CLOSED, established_by="test", evidence=["e"]
     )
@@ -529,7 +577,7 @@ def test_chain_verification_detects_tampering(session: VeritasSession) -> None:
     payload["components"]["ROUTER"]["history"][1]["action"] = "forged"
     path.write_text(_json.dumps(payload), encoding="utf8")
 
-    from wyrd_evidence_core.registry_schema import RegistryCorruptionError
+    from veritas_demo.evidence.registry_schema import RegistryCorruptionError
 
     with pytest.raises(RegistryCorruptionError):
         session.open_registry(path.parent)
